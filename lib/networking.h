@@ -190,14 +190,13 @@ static inline void INADDR_GET_SUN_SUNB(struct in_addr *st, uint8_t *s_b1, uint8_
 }
 
 #elif defined(__3DS__)
-// Nintendo 3DS — no traditional socket API; define types so headers parse.
-// Actual networking is not supported; -nonetwork is always passed.
+// Nintendo 3DS — use libctru socket types where available, stub the rest.
+#include <sys/socket.h>
+#include <netinet/in.h>
 typedef int SOCKET;
 typedef bool BOOL;
-struct sockaddr_in { int placeholder; };
 typedef struct sockaddr_in SOCKADDR_IN;
-struct sockaddr { int placeholder; };
-typedef struct sockaddr SOCKADDR;
+typedef struct sockaddr    SOCKADDR;
 struct hostent { int placeholder; };
 typedef struct hostent HOSTENT;
 #define INVALID_SOCKET  (-1)

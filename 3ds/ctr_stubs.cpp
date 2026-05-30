@@ -5,6 +5,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <cstdint>
+#include <3ds.h>
 
 // -----------------------------------------------------------------------
 // sndlib — sound arrays and InitSounds (from sndlib/soundload.cpp and
@@ -59,20 +60,7 @@ int Times_game_restored = 0;
 bool PlayerResetShipPermissions(int, bool) { return true; }
 bool PlayerSetShipPermission(int, char *, bool) { return true; }
 
-// -----------------------------------------------------------------------
-// UI stubs — DoMessageBox (newui.h) — use unsigned int to avoid pulling
-//             in the full ddgr_color / grtext chain.
-// -----------------------------------------------------------------------
-typedef uint32_t ddgr_color;  // must match grdefs.h (uint32_t = unsigned long on ARM)
-int DoMessageBox(const char *title, const char *msg, int /*type*/,
-                 ddgr_color /*title_color*/, ddgr_color /*msg_color*/) {
-  printf("[3DS] DoMessageBox: %s -- %s\n", title ? title : "", msg ? msg : "");
-  return 0;
-}
-int DoMessageBoxAdvanced(const char *title, const char *msg, const char * /*btn0*/, int /*key0*/, ...) {
-  printf("[3DS] DoMessageBoxAdvanced: %s -- %s\n", title ? title : "", msg ? msg : "");
-  return 0;
-}
+// DoMessageBox / DoMessageBoxAdvanced are now provided by newui.cpp
 
 // -----------------------------------------------------------------------
 // dedicated server stubs
@@ -120,3 +108,179 @@ void EndFrame() {
 }
 
 // grtext_SetParameters is now provided by grtext.cpp
+
+// -----------------------------------------------------------------------
+// game.cpp screen mode — on 3DS we're always in menu mode
+// -----------------------------------------------------------------------
+#include "game.h"
+static int s_screen_mode = SM_MENU;
+int  GetScreenMode() { return s_screen_mode; }
+void SetScreenMode(int sm, bool /*force*/) {
+    printf("[3DS] SetScreenMode(%d)\n", sm);
+    s_screen_mode = sm;
+}
+
+// -----------------------------------------------------------------------
+// descent.cpp — function mode + MainLoop
+// -----------------------------------------------------------------------
+#include "descent.h"
+#include "menu.h"
+
+static function_mode s_function_mode = MENU_MODE;
+function_mode GetFunctionMode() { return s_function_mode; }
+void SetFunctionMode(function_mode mode) {
+    printf("[3DS] SetFunctionMode(%d)\n", (int)mode);
+    s_function_mode = mode;
+}
+
+void MainLoop() {
+    bool exit_game = false;
+    while (!exit_game && aptMainLoop()) {
+        switch (s_function_mode) {
+        case QUIT_MODE:
+            exit_game = true;
+            break;
+        case MENU_MODE:
+            if (MainMenu())
+                exit_game = true;
+            break;
+        default:
+            printf("[3DS] MainLoop: unhandled mode %d, returning to menu\n", (int)s_function_mode);
+            s_function_mode = MENU_MODE;
+            break;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------
+// Multiplayer UI bail flag
+// -----------------------------------------------------------------------
+bool Multi_bail_ui_menu = false;
+
+// -----------------------------------------------------------------------
+// Screenshot — not supported on 3DS
+// -----------------------------------------------------------------------
+void DoScreenshot() {}
+
+// -----------------------------------------------------------------------
+// d3music stubs
+// -----------------------------------------------------------------------
+#include "d3music.h"
+tMusicSeqInfo Game_music_info{};
+void D3MusicDoFrame(tMusicSeqInfo *) {}
+void D3MusicStart(const char *) {}
+void D3MusicStop() {}
+void D3MusicSetRegion(int16_t, bool) {}
+void D3MusicStartCinematic() {}
+
+// -----------------------------------------------------------------------
+// Sound name lookup stub
+// -----------------------------------------------------------------------
+#include "soundload.h"
+int FindSoundName(const char *) { return -1; }
+
+// -----------------------------------------------------------------------
+// hlsSystem Sound_system — stub instance (no audio hardware on this path)
+// -----------------------------------------------------------------------
+#include "hlsoundlib.h"
+hlsSystem Sound_system;
+
+// -----------------------------------------------------------------------
+// pilot_class stubs (constructor/destructor + filename methods)
+// -----------------------------------------------------------------------
+#include "pilot_class.h"
+#include "Inventory.h"
+pilot::pilot()  { memset(this, 0, sizeof(*this)); }
+pilot::~pilot() {}
+void pilot::set_filename(const std::string &f) { filename = f; }
+std::string pilot::get_filename() { return filename; }
+
+Inventory::Inventory()  {}
+Inventory::~Inventory() {}
+int pilot::find_mission_data(const char *) { return -1; }
+
+// -----------------------------------------------------------------------
+// Pilot system stubs
+// -----------------------------------------------------------------------
+#include "pilot.h"
+pilot Current_pilot;
+void  PltReadFile(pilot *, bool, bool) {}
+int   PltWriteFile(pilot *, bool) { return 1; }
+void  PilotSelect() {}
+void  CurrentPilotUpdateMissionStatus(bool) {}
+int   GetPilotShipPermissions(pilot *, const char *) { return 0; }
+
+// -----------------------------------------------------------------------
+// Multiplayer / networking stubs
+// -----------------------------------------------------------------------
+bool  MultiDLLGameStarting = false;
+bool  Demo_looping         = false;
+bool  Demo_restart         = false;
+bool  TCP_active           = false;
+int   Auto_login_port      = 0;
+char  Auto_login_addr[256] = {};
+bool  LoadMultiDLL(const char *) { return false; }
+void  CallMultiDLL(int) {}
+void  ReturnMultiplayerGameMenu() {}
+void  MainMultiplayerMenu() {}
+void  AutoConnectPXO() {}
+void  AutoConnectLANIP() {}
+void  AutoConnectHeat() {}
+
+// -----------------------------------------------------------------------
+// Game mode / state stubs
+// -----------------------------------------------------------------------
+void  SetGameMode(int) {}
+bool  IsCheater = false;
+
+// -----------------------------------------------------------------------
+// Load/save game stubs
+// -----------------------------------------------------------------------
+void  LoadGameDialog() {}
+bool  DoPathFileDialog(bool, std::filesystem::path &, const char *,
+                       const std::vector<std::string> &, int) { return false; }
+void  SimpleStartLevel(const std::filesystem::path &) {}
+
+// -----------------------------------------------------------------------
+// Options menu stub
+// -----------------------------------------------------------------------
+void  OptionsMenu() {}
+
+// -----------------------------------------------------------------------
+// Demo stubs
+// -----------------------------------------------------------------------
+void  LoadDemoDialog() {}
+
+// -----------------------------------------------------------------------
+// Cinematics stubs
+// -----------------------------------------------------------------------
+#include "cinematics.h"
+tCinematic *StartMovie(const char *, bool) { return nullptr; }
+bool        FrameMovie(tCinematic *, int, int, bool) { return false; }
+void        EndMovie(tCinematic *) {}
+
+// -----------------------------------------------------------------------
+// Level / mission stubs
+// -----------------------------------------------------------------------
+#include "Mission.h"
+bool  LoadLevelInfo(const std::filesystem::path &, level_info &) { return false; }
+// DisplayLevelWarpDlg, MenuLoadLevel, MenuNewGame defined in menu.cpp
+
+// -----------------------------------------------------------------------
+// Players array (referenced by menu.cpp)
+// -----------------------------------------------------------------------
+#include "player.h"
+player Players[MAX_PLAYERS]{};
+
+// -----------------------------------------------------------------------
+// ddio keyboard-to-ASCII (used by grfont key handling)
+// -----------------------------------------------------------------------
+int ddio_KeyToAscii(int key) {
+    // Very minimal map — just printable ASCII range
+    if (key >= 0x02 && key <= 0x0D) return '1' + (key - 0x02); // 1-0 row
+    if (key >= 0x10 && key <= 0x19) return "qwertyuiop"[key - 0x10];
+    if (key >= 0x1E && key <= 0x26) return "asdfghjkl"[key - 0x1E];
+    if (key >= 0x2C && key <= 0x32) return "zxcvbnm"[key - 0x2C];
+    if (key == 0x39) return ' ';
+    return 0;
+}

@@ -23,49 +23,144 @@ void ddio_Close() {}
 bool ddio_InternalInit(ddio_init_info *) { return true; }
 
 // ---------------------------------------------------------------------------
-// Keyboard / input stubs
+// Keyboard / input — mapped from 3DS HID buttons
 // ---------------------------------------------------------------------------
-void ddio_KeyFlush() {}
-int  ddio_KeyInKey() { return 0; }
-bool ddio_KeyState(int) { return false; }
+#include "ddio_common.h"  // KEY_UP, KEY_DOWN, KEY_ENTER, KEY_ESC, etc.
+
+// Map a 3DS button mask to a D3 key scancode (single key per frame)
+static int ctr_buttons_to_key(u32 down) {
+    if (down & KEY_DUP)    return KEY_UP;
+    if (down & KEY_DDOWN)  return KEY_DOWN;
+    if (down & KEY_DLEFT)  return KEY_LEFT;
+    if (down & KEY_DRIGHT) return KEY_RIGHT;
+    if (down & KEY_A)      return KEY_ENTER;
+    if (down & KEY_B)      return KEY_ESC;
+    if (down & KEY_X)      return KEY_SPACEBAR;
+    if (down & KEY_START)  return KEY_ESC;
+    return 0;
+}
+
+// Persistent key state (held this frame)
+static int  s_current_key   = 0;
+static bool s_key_held      = false;
+
+void ddio_KeyFlush() { s_current_key = 0; s_key_held = false; }
+
+// Called once per UI frame by UISystem — returns the key pressed this frame
+int ddio_KeyInKey() {
+    hidScanInput();
+    u32 down     = hidKeysDown();    // just-pressed
+    u32 held     = hidKeysHeld();    // held (for repeat)
+    int key = ctr_buttons_to_key(down);
+    if (!key) key = 0;  // no repeat for now — add later if menus feel sluggish
+    s_current_key = key;
+    s_key_held    = (ctr_buttons_to_key(held) == key) && key != 0;
+    return key;
+}
+
+bool ddio_KeyState(int scancode) {
+    u32 held = hidKeysHeld();
+    return ctr_buttons_to_key(held) == scancode;
+}
+
+bool ddio_GetAdjKeyState(int scancode) {
+    return ddio_KeyState(scancode);
+}
+
 void ddio_InternalKeyClose() {}
 bool ddio_InternalKeyInit(ddio_init_info *) { return true; }
-void ddio_InternalKeyFrame() {}
+void ddio_InternalKeyFrame() { hidScanInput(); }
 void ddio_InternalKeySuspend() {}
 void ddio_InternalKeyResume() {}
 bool ddio_InternalKeyState(uint8_t) { return false; }
 void ddio_InternalResetKey(uint8_t) {}
 
 // ---------------------------------------------------------------------------
-// Mouse stubs (no mouse on 3DS; touchscreen handled separately later)
+// Mouse — emulated via circle pad + touch screen
+// UI coords are in D3's 640x480 logical space.
 // ---------------------------------------------------------------------------
-bool ddio_MouseInit() { return true; }
+
+static int  s_mouse_x = 320, s_mouse_y = 240;  // start centre
+static int  s_mouse_lx = 320, s_mouse_ly = 240;
+static bool s_btn1_down = false;
+static bool s_btn1_event = false;
+static bool s_btn1_event_state = false;
+
+// Call once per frame to update mouse state from HID
+static void ctr_mouse_update() {
+    hidScanInput();
+
+    // Circle pad: range ~-154..+154 per axis. Scale to ~10px/frame movement.
+    circlePosition cp;
+    hidCircleRead(&cp);
+    const float DEAD = 20.0f, SCALE = 0.06f;
+    if (cp.dx > DEAD || cp.dx < -DEAD)
+        s_mouse_x += (int)(cp.dx * SCALE);
+    if (cp.dy > DEAD || cp.dy < -DEAD)
+        s_mouse_y -= (int)(cp.dy * SCALE);  // Y is inverted
+
+    // Clamp to 640x480 logical space
+    if (s_mouse_x < 0)   s_mouse_x = 0;
+    if (s_mouse_x > 639) s_mouse_x = 639;
+    if (s_mouse_y < 0)   s_mouse_y = 0;
+    if (s_mouse_y > 479) s_mouse_y = 479;
+
+    // Touch screen → mouse click (map 320x240 touch to 640x480)
+    bool prev_down = s_btn1_down;
+    if (hidKeysHeld() & KEY_TOUCH) {
+        touchPosition tp;
+        hidTouchRead(&tp);
+        s_mouse_x  = tp.px * 2;
+        s_mouse_y  = tp.py * 2;
+        s_btn1_down = true;
+    } else {
+        s_btn1_down = false;
+    }
+    // A button also acts as left click
+    if (hidKeysHeld() & KEY_A) s_btn1_down = true;
+
+    if (s_btn1_down != prev_down) {
+        s_btn1_event       = true;
+        s_btn1_event_state = s_btn1_down;
+    }
+}
+
+bool ddio_MouseInit() { s_mouse_x = 320; s_mouse_y = 240; return true; }
 void ddio_MouseClose() {}
-void ddio_MouseReset() {}
+void ddio_MouseReset() { s_mouse_x = 320; s_mouse_y = 240; s_btn1_down = false; }
 void ddio_MouseMode(int) {}
-void ddio_MouseQueueFlush() {}
-void ddio_InternalMouseFrame() {}
+void ddio_MouseQueueFlush() { s_btn1_event = false; }
+void ddio_InternalMouseFrame() { ctr_mouse_update(); }
 void ddio_InternalMouseSuspend() {}
 void ddio_InternalMouseResume() {}
 bool ddio_MouseGetGrab() { return false; }
 void ddio_MouseSetGrab(bool) {}
 int  ddio_MouseGetCaps(int *btn, int *axis) {
-    if (btn)  *btn  = 0;
-    if (axis) *axis = 0;
-    return 0;
+    if (btn)  *btn  = 1;
+    if (axis) *axis = 2;
+    return 1;
 }
 int  ddio_MouseGetState(int *x, int *y, int *dx, int *dy, int *z, int *dz) {
-    if (x)  *x  = 0; if (y)  *y  = 0;
-    if (dx) *dx = 0; if (dy) *dy = 0;
-    if (z)  *z  = 0; if (dz) *dz = 0;
-    return 0;
+    ctr_mouse_update();
+    if (x)  *x  = s_mouse_x;  if (y)  *y  = s_mouse_y;
+    if (dx) *dx = s_mouse_x - s_mouse_lx;
+    if (dy) *dy = s_mouse_y - s_mouse_ly;
+    if (z)  *z  = 0;           if (dz) *dz = 0;
+    s_mouse_lx = s_mouse_x;   s_mouse_ly = s_mouse_y;
+    return s_btn1_down ? 1 : 0;  // bit0 = LMB
 }
-bool ddio_MouseGetEvent(int *btn, bool *state) { return false; }
-int  ddio_MouseBtnDownCount(int) { return 0; }
-int  ddio_MouseBtnUpCount(int) { return 0; }
+bool ddio_MouseGetEvent(int *btn, bool *state) {
+    if (!s_btn1_event) return false;
+    if (btn)   *btn   = 0;
+    if (state) *state = s_btn1_event_state;
+    s_btn1_event = false;
+    return true;
+}
+int  ddio_MouseBtnDownCount(int) { return s_btn1_down ? 1 : 0; }
+int  ddio_MouseBtnUpCount(int)   { return s_btn1_down ? 0 : 1; }
 void ddio_MouseSetLimits(int,int,int,int,int,int) {}
 void ddio_MouseGetLimits(int *l,int *t,int *r,int *b,int *zn,int *zx) {
-    if(l)*l=0; if(t)*t=0; if(r)*r=400; if(b)*b=240;
+    if(l)*l=0; if(t)*t=0; if(r)*r=640; if(b)*b=480;
     if(zn)*zn=0; if(zx)*zx=0;
 }
 void ddio_MouseSetVCoords(int, int) {}

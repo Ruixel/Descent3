@@ -529,9 +529,11 @@ extern int max_one_second;
 // #endif
 
 void MainLoop() {
+  printf("Testing MainLoop\n");
   int exit_game = 0;
 
   while (!exit_game) {
+    printf("uhhh, meow? %d\n", Function_mode);
     if (Dedicated_server && !(Function_mode == GAME_MODE || Function_mode == QUIT_MODE))
       SetFunctionMode(GAME_MODE);
 

@@ -7,11 +7,13 @@
 #include <cstring>
 #include <cstdlib>
 #include <cstdint>
+#include <cmath>
 #include <3ds.h>
 #include <citro3d.h>
 
 // Descent 3 headers
 #include "renderer.h"
+#include "3d.h"
 #include "bitmap.h"
 #include "grdefs.h"
 #include "d3movie.h"
@@ -421,8 +423,8 @@ void rend_ClearScreen(ddgr_color color) {
 // ---------------------------------------------------------------------------
 void rend_DrawChunkedBitmap(chunked_bitmap *chunk, int x, int y, uint8_t alpha) {
     if (!chunk || !s_top) return;
-    printf("[CTR] DrawChunkedBitmap: %dx%d tiles, pw=%d ph=%d, at (%d,%d)\n",
-           chunk->w, chunk->h, chunk->pw, chunk->ph, x, y);
+    // printf("[CTR] DrawChunkedBitmap: %dx%d tiles, pw=%d ph=%d, at (%d,%d)\n",
+    //        chunk->w, chunk->h, chunk->pw, chunk->ph, x, y);
 
 
     float a = alpha / 255.0f;
@@ -534,7 +536,6 @@ void rend_DrawScaledBitmap(int x1, int y1, int x2, int y2, int bm,
 void rend_SetZBufferState(int8_t)       {}
 void rend_SetAlphaType(int8_t)          {}
 void rend_SetAlphaValue(uint8_t)        {}
-void rend_SetFlatColor(ddgr_color)      {}
 void rend_SetTextureType(texture_type)  {}
 void rend_SetColorModel(color_model)    {}
 void rend_SetLighting(light_state)      {}
@@ -560,20 +561,164 @@ bool rend_CheckTextureFormat(int, int)  { return true; }
 void rend_SetMipBias(float)             {}
 void rend_GetStatistics(tRendererStats *s) { if (s) memset(s, 0, sizeof(*s)); }
 
+// ---------------------------------------------------------------------------
+// 2D primitive drawing — needed by UIDraw.cpp
+// ---------------------------------------------------------------------------
+
+// Flat colour used by rend_DrawLine / rend_FillRect
+static ddgr_color s_flat_color = 0xFFFFFF;
+// Override the stub above so the real colour is stored
+#undef rend_SetFlatColor  // in case it was macro'd
+
+void rend_SetFlatColor(ddgr_color c) { s_flat_color = c; }
+
+// Draw a 1-pixel-wide line in screen coords (640x480 logical)
+void rend_DrawLine(int x1, int y1, int x2, int y2) {
+    if (!s_top) return;
+    float sx = (float)CTR_TOP_W / 640.0f;
+    float sy = (float)CTR_TOP_H / 480.0f;
+    // Represent as a thin quad (1px in logical = ~0.6px on screen, just use 1 screen px)
+    float fx1 = x1 * sx, fy1 = y1 * sy;
+    float fx2 = x2 * sx, fy2 = y2 * sy;
+    float r = ((s_flat_color >> 16) & 0xFF) / 255.0f;
+    float g = ((s_flat_color >>  8) & 0xFF) / 255.0f;
+    float b = ( s_flat_color        & 0xFF) / 255.0f;
+
+    // Use a 1px white texture (create on demand)
+    static C3D_Tex s_white_tex;
+    static bool    s_white_init = false;
+    if (!s_white_init) {
+        C3D_TexInit(&s_white_tex, 8, 8, GPU_RGBA8);
+        uint32_t *p = (uint32_t *)linearAlloc(8 * 8 * 4);
+        for (int i = 0; i < 8*8; i++) p[i] = 0xFFFFFFFF;
+        // Morton-swizzle the 8x8 white block
+        uint32_t *dst = (uint32_t *)malloc(8 * 8 * 4);
+        swizzle_rgba8(p, dst, 8, 8, 8, 8);
+        memcpy(p, dst, 8*8*4);
+        free(dst);
+        C3D_TexUpload(&s_white_tex, p);
+        C3D_TexFlush(&s_white_tex);
+        linearFree(p);
+        s_white_init = true;
+    }
+
+    // Draw as a thin rectangle along the line direction
+    float dx = fx2 - fx1, dy = fy2 - fy1;
+    float len = sqrtf(dx*dx + dy*dy);
+    if (len < 0.5f) return;
+    // For axis-aligned lines just use a rect; diagonal lines approximate
+    float thick = 1.0f;
+    if (fabsf(dx) >= fabsf(dy)) {
+        // horizontal-ish
+        float lx = (fx1 < fx2 ? fx1 : fx2);
+        float ly = fy1 - thick * 0.5f;
+        push_quad(&s_white_tex, lx, ly, fabsf(dx), thick, 0,0,1,1, r,g,b,1.0f);
+    } else {
+        // vertical-ish
+        float lx = fx1 - thick * 0.5f;
+        float ly = (fy1 < fy2 ? fy1 : fy2);
+        push_quad(&s_white_tex, lx, ly, thick, fabsf(dy), 0,0,1,1, r,g,b,1.0f);
+    }
+    flush_quads(&s_white_tex);
+}
+
+// Fill a solid colour rectangle
+void rend_FillRect(ddgr_color color, int x1, int y1, int x2, int y2) {
+    if (!s_top) return;
+    float sx = (float)CTR_TOP_W / 640.0f;
+    float sy = (float)CTR_TOP_H / 480.0f;
+    float r = ((color >> 16) & 0xFF) / 255.0f;
+    float g = ((color >>  8) & 0xFF) / 255.0f;
+    float b = ( color        & 0xFF) / 255.0f;
+
+    static C3D_Tex s_white_tex2;
+    static bool    s_white2_init = false;
+    if (!s_white2_init) {
+        C3D_TexInit(&s_white_tex2, 8, 8, GPU_RGBA8);
+        uint32_t *p = (uint32_t *)linearAlloc(8 * 8 * 4);
+        for (int i = 0; i < 8*8; i++) p[i] = 0xFFFFFFFF;
+        uint32_t *dst = (uint32_t *)malloc(8 * 8 * 4);
+        swizzle_rgba8(p, dst, 8, 8, 8, 8);
+        memcpy(p, dst, 8*8*4);
+        free(dst);
+        C3D_TexUpload(&s_white_tex2, p);
+        C3D_TexFlush(&s_white_tex2);
+        linearFree(p);
+        s_white2_init = true;
+    }
+
+    float dx = (x1 < x2 ? x1 : x2) * sx;
+    float dy = (y1 < y2 ? y1 : y2) * sy;
+    float dw = abs(x2 - x1) * sx;
+    float dh = abs(y2 - y1) * sy;
+    push_quad(&s_white_tex2, dx, dy, dw, dh, 0,0,1,1, r,g,b,1.0f);
+    flush_quads(&s_white_tex2);
+}
+
+// Draw a polygon as a filled quad (UI uses 4-vertex rects)
+void rend_DrawPolygon2D(int /*handle*/, g3Point **p, int nv) {
+    if (!s_top || nv < 3) return;
+    // UI always passes 4 verts for a rect — just draw as two tris with flat colour
+    float sx = (float)CTR_TOP_W / 640.0f;
+    float sy = (float)CTR_TOP_H / 480.0f;
+    float r = ((s_flat_color >> 16) & 0xFF) / 255.0f;
+    float g = ((s_flat_color >>  8) & 0xFF) / 255.0f;
+    float b = ( s_flat_color        & 0xFF) / 255.0f;
+    float a = 1.0f;
+
+    // Find bounding rect
+    float qx0 = p[0]->p3_sx * sx, qy0 = p[0]->p3_sy * sy;
+    float qx1 = qx0, qy1 = qy0;
+    for (int i = 1; i < nv; i++) {
+        float ppx = p[i]->p3_sx * sx, ppy = p[i]->p3_sy * sy;
+        if (ppx < qx0) qx0 = ppx; if (ppy < qy0) qy0 = ppy;
+        if (ppx > qx1) qx1 = ppx; if (ppy > qy1) qy1 = ppy;
+    }
+
+    static C3D_Tex s_white_tex3;
+    static bool    s_white3_init = false;
+    if (!s_white3_init) {
+        C3D_TexInit(&s_white_tex3, 8, 8, GPU_RGBA8);
+        uint32_t *pd = (uint32_t *)linearAlloc(8*8*4);
+        for (int i = 0; i < 64; i++) pd[i] = 0xFFFFFFFF;
+        uint32_t *dst = (uint32_t *)malloc(8*8*4);
+        swizzle_rgba8(pd, dst, 8, 8, 8, 8);
+        memcpy(pd, dst, 8*8*4); free(dst);
+        C3D_TexUpload(&s_white_tex3, pd);
+        C3D_TexFlush(&s_white_tex3);
+        linearFree(pd);
+        s_white3_init = true;
+    }
+
+    push_quad(&s_white_tex3, qx0, qy0, qx1-qx0, qy1-qy0, 0,0,1,1, r,g,b,a);
+    flush_quads(&s_white_tex3);
+}
+
+// Draw a bitmap at exact pixel position (no scaling)
+void rend_DrawSimpleBitmap(int bm_handle, int x, int y) {
+    if (!s_top) return;
+    C3D_Tex *tex = get_tex(bm_handle);
+    if (!tex) return;
+    float sx = (float)CTR_TOP_W / 640.0f;
+    float sy = (float)CTR_TOP_H / 480.0f;
+    int bw = GameBitmaps[bm_handle].width;
+    int bh = GameBitmaps[bm_handle].height;
+    float u1 = (float)bw / tex->width;
+    float v1 = (float)bh / tex->height;
+    push_quad(tex, x*sx, y*sy, bw*sx, bh*sy, 0,0,u1,v1, 1,1,1,1);
+    flush_quads(tex);
+}
+
 // 3D drawing — all no-ops until the 3D path is implemented
 void rend_DrawPolygon3D(int, void *, int, int)  {}
 void rend_DrawFlatPolygon3D(void *, int)        {}
-void rend_DrawScaledBitmap(int, int, int, int, int, int, float, int) {}
-void rend_DrawSimpleBitmap(int, int, int)       {}
 void rend_DrawBitmap(int, int, int, int, int, float, int, float) {}
 void rend_DrawRotatedBitmap(int, int, int, float, int, float)    {}
 void rend_DrawSpecialBitmap(int, int, int, float, int)           {}
 void rend_DrawLightningBolt(void *, int)        {}
 void rend_DrawSphere(ddgr_color, int, int, int) {}
-void rend_DrawLine(int, int, int, int)          {}
 void rend_DrawCircle(int, int, int)             {}
 void rend_DrawPixel(int, int, ddgr_color)       {}
-void rend_FillRect(ddgr_color, int, int, int, int) {}
 
 // Texture management stubs
 void rend_PreUploadTextureToCard(int, int)      {}

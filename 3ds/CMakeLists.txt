@@ -48,6 +48,27 @@ set(CPPS
   ${CMAKE_SOURCE_DIR}/grtext/textaux.cpp
   # game font loader
   ${CMAKE_SOURCE_DIR}/Descent3/gamefont.cpp
+  # UI widget system
+  ${CMAKE_SOURCE_DIR}/ui/UIButton.cpp
+  ${CMAKE_SOURCE_DIR}/ui/UICombo.cpp
+  ${CMAKE_SOURCE_DIR}/ui/UIConsole.cpp
+  ${CMAKE_SOURCE_DIR}/ui/UIDraw.cpp
+  ${CMAKE_SOURCE_DIR}/ui/UIEdit.cpp
+  ${CMAKE_SOURCE_DIR}/ui/UIGadget.cpp
+  ${CMAKE_SOURCE_DIR}/ui/UIGroup.cpp
+  ${CMAKE_SOURCE_DIR}/ui/UIHotspot.cpp
+  ${CMAKE_SOURCE_DIR}/ui/UIListBox.cpp
+  ${CMAKE_SOURCE_DIR}/ui/UIObject.cpp
+  ${CMAKE_SOURCE_DIR}/ui/UIRes.cpp
+  ${CMAKE_SOURCE_DIR}/ui/UISlider.cpp
+  ${CMAKE_SOURCE_DIR}/ui/UIStatic.cpp
+  ${CMAKE_SOURCE_DIR}/ui/UISystem.cpp
+  ${CMAKE_SOURCE_DIR}/ui/UIWindow.cpp
+  # Menu system
+  ${CMAKE_SOURCE_DIR}/Descent3/newui.cpp
+  ${CMAKE_SOURCE_DIR}/Descent3/newui_core.cpp
+  ${CMAKE_SOURCE_DIR}/Descent3/mmItem.cpp
+  ${CMAKE_SOURCE_DIR}/Descent3/menu.cpp
 )
 
 add_library(platform3ds STATIC ${HEADERS} ${CPPS})
@@ -64,6 +85,7 @@ target_include_directories(platform3ds PUBLIC
   ${CMAKE_SOURCE_DIR}/logger
   ${CMAKE_SOURCE_DIR}/mem
   ${CMAKE_SOURCE_DIR}/3ds/plog
+  ${CMAKE_SOURCE_DIR}/model
   ${PROJECT_BINARY_DIR}/lib
 )
 
