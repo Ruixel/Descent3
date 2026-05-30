@@ -102,6 +102,9 @@ public:
 
 #if defined(DX_APP)
 #include "win\win32database.h"
+#elif defined(__3DS__)
+// Forward-declared; actual definition lives in ctr_database.h (included by ctr_init.cpp).
+// Code that needs oeCtrAppDatabase directly should include ctr_database.h explicitly.
 #else
 #include "linux/lnxdatabase.h"
 #endif

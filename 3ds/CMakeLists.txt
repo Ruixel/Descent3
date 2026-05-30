@@ -10,6 +10,7 @@ set(CPPS
   ctr_ddio.cpp       # ddio stubs (input, file I/O)
   ctr_renderer.cpp   # renderer stubs (replaces OpenGL renderer)
   ctr_sound.cpp      # sound stubs
+  ${CMAKE_SOURCE_DIR}/ddio/chrono_timer.cpp  # portable timer via std::chrono
 )
 
 add_library(platform3ds STATIC ${HEADERS} ${CPPS})

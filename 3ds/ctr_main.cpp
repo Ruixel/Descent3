@@ -64,6 +64,11 @@ int main(int argc, char *argv[])
         printf("Failed to open d3.hog - check sdmc:/descent3/\n");
     }
 
+    // Now that HOG is mounted, run the first init wave
+    printf("Calling InitD3Systems1()...\n");
+    InitD3Systems1(false);
+    printf("InitD3Systems1() done!\n");
+
     printf("\nPress START to exit.\n");
 
     // Main loop — keep the applet alive until the user quits.

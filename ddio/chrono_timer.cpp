@@ -17,7 +17,11 @@
  */
 
 #include <chrono>
+#if defined(__3DS__)
+#include <3ds.h>
+#else
 #include <thread>
+#endif
 
 #include "chrono_timer.h"
 
@@ -41,7 +45,11 @@ int64_t ChronoTimer::GetTimeUS() {
 }
 
 void ChronoTimer::SleepMS(int delay) {
+#if defined(__3DS__)
+  svcSleepThread((int64_t)delay * 1000000LL);  // nanoseconds
+#else
   std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+#endif
 }
 
 } // namespace D3

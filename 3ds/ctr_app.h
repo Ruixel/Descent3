@@ -20,6 +20,7 @@ public:
   unsigned m_Flags;
   int m_X, m_Y, m_W, m_H;
 
+  oeLnxApplication() : m_Flags(0), m_X(0), m_Y(0), m_W(400), m_H(240) {}
   oeLnxApplication(unsigned flags) : m_Flags(flags), m_X(0), m_Y(0), m_W(400), m_H(240) {}
   oeLnxApplication(tLnxAppInfo *info) : m_Flags(info->flags),
       m_X(info->wnd_x), m_Y(info->wnd_y), m_W(info->wnd_w), m_H(info->wnd_h) {}

@@ -3,9 +3,17 @@
 #include <stdio.h>
 #include <cstdarg>
 
-// C++ function (must NOT be in extern "C")
+// C++ functions (must NOT be in extern "C")
 int Debug_MessageBox(int type, const char *title, const char *str) {
   printf("[DBG] %s: %s\n", title ? title : "?", str ? str : "?");
+  return 0;
+}
+
+int Debug_ErrorBox(int type, const char *topstring, const char *title, const char *bottomstring) {
+  printf("[ERR] %s | %s | %s\n",
+    topstring   ? topstring   : "",
+    title       ? title       : "",
+    bottomstring ? bottomstring : "");
   return 0;
 }
 

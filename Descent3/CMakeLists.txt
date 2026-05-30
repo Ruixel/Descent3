@@ -328,6 +328,7 @@ if(NINTENDO_3DS)
     # Game source files — added back progressively as deps are resolved
     args.cpp
     program.cpp
+    localization.cpp
   )
   target_include_directories(Descent3 PRIVATE
     ${CMAKE_SOURCE_DIR}/3ds

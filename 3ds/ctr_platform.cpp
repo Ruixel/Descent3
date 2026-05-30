@@ -4,6 +4,8 @@
 #include <citro3d.h>
 #include <stdio.h>
 
+#include "chrono_timer.h"
+
 // Console handle — using the bottom screen so the top screen is free for 3D.
 static PrintConsole g_console;
 
@@ -13,6 +15,9 @@ void ctr_platform_init(void)
 
     // Initialise the libctru console on the bottom screen.
     consoleInit(GFX_BOTTOM, &g_console);
+
+    // Initialize the portable timer (used by timer_GetTime macro)
+    D3::ChronoTimer::Initialize();
 
     printf("Descent3 3DS stub started\n");
 

@@ -70,7 +70,9 @@ program_version Program_version;
 //	Initializes the current program state
 
 void ProgramVersion(int version_type, uint8_t major, uint8_t minor, uint8_t build) {
+#ifndef __3DS__
   oeLnxAppDatabase dbase((oeLnxAppDatabase *)Database);
+#endif
 
   Program_version.version_type = version_type;
   Program_version.major = major;
@@ -104,6 +106,7 @@ void ProgramVersion(int version_type, uint8_t major, uint8_t minor, uint8_t buil
     Int3(); // NO NO NO
   }
 
+#ifndef __3DS__
   if (dbase.lookup_record("Version")) {
     dbase.write("Major", Program_version.major);
     dbase.write("Minor", Program_version.minor);
@@ -111,4 +114,5 @@ void ProgramVersion(int version_type, uint8_t major, uint8_t minor, uint8_t buil
   } else {
     Error("Unable to find version key for %s", PRODUCT_NAME);
   }
+#endif
 }
