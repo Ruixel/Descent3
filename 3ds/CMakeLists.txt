@@ -1,20 +1,51 @@
 # 3DS platform library — replaces linux/ and ddio/ for the 3DS target.
 # Start with a minimal stub that lets the project link; flesh out over time.
 
+# ---------------------------------------------------------------------------
+# Build PICA200 vertex shaders with picasso
+# ---------------------------------------------------------------------------
+find_program(PICASSO picasso PATHS ${DEVKITPRO}/tools/bin REQUIRED)
+
+set(SHADER_SOURCES
+  ${CMAKE_CURRENT_SOURCE_DIR}/vshader_2d.v.pica
+)
+
+set(SHADER_HEADERS)
+foreach(shader ${SHADER_SOURCES})
+  get_filename_component(shader_name ${shader} NAME_WE)
+  set(out_h   ${CMAKE_CURRENT_BINARY_DIR}/${shader_name}_shbin.h)
+  set(out_bin ${CMAKE_CURRENT_BINARY_DIR}/${shader_name}_shbin.bin)
+  add_custom_command(
+    OUTPUT  ${out_h} ${out_bin}
+    COMMAND ${PICASSO} -o ${out_bin} ${shader}
+    # Convert binary to a C header with xxd-style output
+    COMMAND ${CMAKE_COMMAND}
+      -DINPUT=${out_bin}
+      -DOUTPUT=${out_h}
+      -DVARNAME=${shader_name}_shbin
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/bin2h.cmake
+    DEPENDS ${shader}
+    COMMENT "Compiling PICA shader ${shader_name}"
+  )
+  list(APPEND SHADER_HEADERS ${out_h})
+endforeach()
+
 set(HEADERS
   ctr_platform.h
+  ${SHADER_HEADERS}
 )
 
 set(CPPS
   ctr_platform.cpp   # Main entry point / applet init
   ctr_ddio.cpp       # ddio stubs (input, file I/O)
-  ctr_renderer.cpp   # renderer stubs (replaces OpenGL renderer)
+  ctr_renderer.cpp   # citro3d 2D renderer
   ctr_sound.cpp      # sound stubs
   ctr_stubs.cpp      # misc subsystem stubs (sndlib arrays, UI, Osiris, etc.)
   ${CMAKE_SOURCE_DIR}/ddio/chrono_timer.cpp  # portable timer via std::chrono
 )
 
 add_library(platform3ds STATIC ${HEADERS} ${CPPS})
+target_include_directories(platform3ds PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 target_include_directories(platform3ds PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>

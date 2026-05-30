@@ -1,0 +1,28 @@
+; 2D textured quad vertex shader for Descent 3 / 3DS
+; Attributes:
+;   v0 = position (x, y in clip space [-1..1], z=0, w=1)
+;   v1 = texcoord (s, t, 0, 0)
+;   v2 = colour   (r, g, b, a)  — tint / alpha
+; Uniforms:
+;   (none — positions are pre-transformed to clip space by the CPU)
+; Outputs:
+;   o0 = position
+;   o1 = texcoord0
+;   o2 = colour (passed to TEV)
+
+.fvec uDummy[1]   ; keeps the binary valid even with no real uniforms
+
+.alias v_pos   v0
+.alias v_uv    v1
+.alias v_color v2
+
+.out o0 position
+.out o1 texcoord0
+.out o2 color
+
+.proc main
+    mov o0, v_pos
+    mov o1, v_uv
+    mov o2, v_color
+    end
+.end

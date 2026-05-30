@@ -32,10 +32,7 @@ void InitSounds() {
   Num_sound_files = 0;
 }
 
-// -----------------------------------------------------------------------
-// renderer stubs — symbols called by lightmap_info.cpp
-// -----------------------------------------------------------------------
-void rend_FreePreUploadedTexture(int, int) {}
+// rend_FreePreUploadedTexture is defined in ctr_renderer.cpp
 
 // -----------------------------------------------------------------------
 // manage stubs — mission_download / Mission.cpp
