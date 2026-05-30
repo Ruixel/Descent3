@@ -119,6 +119,4 @@ void EndFrame() {
   rend_EndFrame();
 }
 
-// grtext_SetParameters — sets clipping region for text rendering.
-// Stubbed until grtext is ported.
-void grtext_SetParameters(int, int, int, int) {}
+// grtext_SetParameters is now provided by grtext.cpp

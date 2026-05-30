@@ -42,6 +42,12 @@ set(CPPS
   ctr_sound.cpp      # sound stubs
   ctr_stubs.cpp      # misc subsystem stubs (sndlib arrays, UI, Osiris, etc.)
   ${CMAKE_SOURCE_DIR}/ddio/chrono_timer.cpp  # portable timer via std::chrono
+  # grtext / font system (real implementation)
+  ${CMAKE_SOURCE_DIR}/grtext/grfont.cpp
+  ${CMAKE_SOURCE_DIR}/grtext/grtext.cpp
+  ${CMAKE_SOURCE_DIR}/grtext/textaux.cpp
+  # game font loader
+  ${CMAKE_SOURCE_DIR}/Descent3/gamefont.cpp
 )
 
 add_library(platform3ds STATIC ${HEADERS} ${CPPS})
@@ -55,6 +61,9 @@ target_include_directories(platform3ds PUBLIC
   ${CMAKE_SOURCE_DIR}/lib
   ${CMAKE_SOURCE_DIR}/ui
   ${CMAKE_SOURCE_DIR}/grtext
+  ${CMAKE_SOURCE_DIR}/logger
+  ${CMAKE_SOURCE_DIR}/mem
+  ${CMAKE_SOURCE_DIR}/3ds/plog
   ${PROJECT_BINARY_DIR}/lib
 )
 

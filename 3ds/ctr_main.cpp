@@ -9,6 +9,9 @@
 #include "init.h"
 #include "cfile.h"
 #include "hogfile.h"
+#include "grtext.h"
+#include "gamefont.h"
+#include "renderer.h"
 
 int main(int argc, char *argv[])
 {
@@ -76,13 +79,30 @@ int main(int argc, char *argv[])
 
     printf("\nPress START to exit.\n");
 
-    // Hold the intro screen until the user presses Start
+    extern void StartFrame(bool clear);
+    extern void EndFrame();
+
+    // Keep rendering each frame — citro3d is double-buffered so we must
+    // re-submit every frame or the display goes blank.
     while (aptMainLoop())
     {
         hidScanInput();
         if (hidKeysDown() & KEY_START)
             break;
-        gspWaitForVBlank();
+
+        StartFrame(true);
+        rend_ClearScreen(GR_BLACK);
+        grtext_SetParameters(0, 0, 640, 480, 0);  // always use 640x480 logical space
+        grtext_SetFontScale(2.0f);
+        grtext_SetFont(MENU_FONT);
+        grtext_SetColor(GR_WHITE);
+        grtext_Printf(10, 10, "Descent 3 - 3DS");
+        grtext_SetFontScale(2.0f);
+        grtext_SetFont(SMALL_FONT);
+        grtext_Printf(10, 80, "Font rendering OK!");
+        grtext_Flush();
+        EndFrame();
+        rend_Flip();
     }
 
     ctr_platform_fini();

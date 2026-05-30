@@ -88,36 +88,38 @@ static uint32_t next_pot(uint32_t n) {
     return n + 1;
 }
 
-// Swizzle a linear RGBA8 image to PICA Morton (Z-order) tile format.
-// PICA textures must be tiled in 8x8 blocks with a specific Z-order curve.
-// tile_order[i] gives the linear offset of the i-th texel in an 8x8 tile.
-static const uint8_t kMorton[64] = {
-     0,  1,  4,  5, 16, 17, 20, 21,
-     2,  3,  6,  7, 18, 19, 22, 23,
-     8,  9, 12, 13, 24, 25, 28, 29,
-    10, 11, 14, 15, 26, 27, 30, 31,
-    32, 33, 36, 37, 48, 49, 52, 53,
-    34, 35, 38, 39, 50, 51, 54, 55,
-    40, 41, 44, 45, 56, 57, 60, 61,
-    42, 43, 46, 47, 58, 59, 62, 63,
-};
+// Compute PICA200 Morton index for a pixel at (x, y) within an 8x8 tile.
+// Interleaves bits: m = x0 y0 x1 y1 x2 y2
+static inline int morton_index(int x, int y) {
+    int m = 0;
+    for (int i = 0; i < 3; i++) {
+        m |= ((x >> i) & 1) << (2 * i);
+        m |= ((y >> i) & 1) << (2 * i + 1);
+    }
+    return m;
+}
 
-// Write pixels to dst in tile-major Morton order.
+// Convert a linear RGBA8 buffer to PICA tiled format.
+// Tiles are 8x8, stored in row-major tile order.
+// PICA textures have their origin at bottom-left, so Y is flipped relative
+// to our top-left source image.
 static void swizzle_rgba8(const uint32_t *src, uint32_t *dst,
                            int w_src, int h_src, int tw, int th) {
     memset(dst, 0, tw * th * 4);
-    for (int ty = 0; ty < th; ty += 8) {
-        for (int tx = 0; tx < tw; tx += 8) {
-            for (int k = 0; k < 64; k++) {
-                int lx = tx + (kMorton[k] & 7);
-                int ly = ty + (kMorton[k] >> 3);
-                int src_y = (h_src - 1) - ly;  // flip Y
-                uint32_t px = 0;
-                if (lx < w_src && src_y >= 0 && src_y < h_src)
-                    px = src[src_y * w_src + lx];
-                int tile_idx = (ty / 8) * (tw / 8) + (tx / 8);
-                dst[tile_idx * 64 + k] = px;
-            }
+    int tiles_per_row = tw / 8;
+    for (int y = 0; y < th; y++) {
+        for (int x = 0; x < tw; x++) {
+            // Flip Y: PICA stores textures bottom-up
+            int src_y = (h_src - 1) - y;
+            uint32_t px = 0;
+            if (x < w_src && src_y >= 0 && src_y < h_src)
+                px = src[src_y * w_src + x];
+
+            int tile_x   = x / 8;
+            int tile_y   = y / 8;
+            int tile_idx = tile_y * tiles_per_row + tile_x;
+            int morton   = morton_index(x & 7, y & 7);
+            dst[tile_idx * 64 + morton] = px;
         }
     }
 }
@@ -129,7 +131,16 @@ static inline uint32_t argb1555_to_rgba8(uint16_t p) {
     uint8_t r = ((p >> 10) & 0x1F) << 3;
     uint8_t g = ((p >>  5) & 0x1F) << 3;
     uint8_t b = ( p        & 0x1F) << 3;
-    // RGBA8 as stored in memory (big-endian for PICA): R G B A
+    return ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) | a;
+}
+
+// Convert D3's ARGB4444 pixel to RGBA8
+// 4444: bits15-12=A, 11-8=R, 7-4=G, 3-0=B
+static inline uint32_t argb4444_to_rgba8(uint16_t p) {
+    uint8_t a = ((p >> 12) & 0xF) * 17;  // 0..15 → 0..255
+    uint8_t r = ((p >>  8) & 0xF) * 17;
+    uint8_t g = ((p >>  4) & 0xF) * 17;
+    uint8_t b = ( p        & 0xF) * 17;
     return ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) | a;
 }
 
@@ -151,11 +162,12 @@ static bool upload_bitmap(int handle, C3D_Tex *tex) {
     memset(linear, 0, tw * th * 4);
 
     uint16_t *src = bm->data16;
+    bool fmt4444 = (bm->format == BITMAP_FORMAT_4444);
     // Temporary staging buffer (not in linear mem)
     uint32_t *stage = (uint32_t *)malloc(w * h * 4);
     if (!stage) { linearFree(linear); return false; }
     for (int i = 0; i < w * h; i++)
-        stage[i] = argb1555_to_rgba8(src[i]);
+        stage[i] = fmt4444 ? argb4444_to_rgba8(src[i]) : argb1555_to_rgba8(src[i]);
 
     swizzle_rgba8(stage, linear, w, h, tw, th);
     free(stage);
@@ -341,6 +353,12 @@ int rend_Init(renderer_type /*type*/, oeApplication * /*app*/,
     // Depth test off — 2D quads drawn in submission order
     C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_COLOR);
 
+    // Alpha blending: out = src.rgb * src.a + dst.rgb * (1 - src.a)
+    C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD,
+                   GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA,
+                   GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA);
+    printf("[CTR] rend_Init: AlphaBlend set\n");
+
     printf("[CTR] rend_Init: OK\n");
     return 1;
 }
@@ -366,8 +384,8 @@ void rend_StartFrame(int /*x1*/, int /*y1*/, int /*x2*/, int /*y2*/,
     C3D_RenderTargetClear(s_top, C3D_CLEAR_ALL, s_clear_color, 0);
     C3D_FrameDrawOn(s_top);
 
-    // Re-upload shader + TEV each frame (citro3d state can drift)
-    shaderProgramUse(&s_prog);
+    // Re-bind shader + TEV each frame (citro3d state can drift between frames)
+    C3D_BindProgram(&s_prog);
     setup_tev();
     s_tev_ready = true;
 }
@@ -406,22 +424,6 @@ void rend_DrawChunkedBitmap(chunked_bitmap *chunk, int x, int y, uint8_t alpha) 
     printf("[CTR] DrawChunkedBitmap: %dx%d tiles, pw=%d ph=%d, at (%d,%d)\n",
            chunk->w, chunk->h, chunk->pw, chunk->ph, x, y);
 
-    // --- Sanity test: draw tile 0 in top-left corner using push_quad ---
-    {
-        int bm0 = chunk->bm_array[0];
-        C3D_Tex *tex0 = get_tex(bm0);
-        if (tex0) {
-            printf("[CTR] Sanity: drawing tile 0 (%dx%d) at (0,0)\n",
-                   GameBitmaps[bm0].width, GameBitmaps[bm0].height);
-            float tw = GameBitmaps[bm0].width;
-            float th = GameBitmaps[bm0].height;
-            float u1 = tw / tex0->width;
-            float v1 = th / tex0->height;
-            push_quad(tex0, 0, 0, tw, th, 0, 0, u1, v1, 1, 1, 1, 1);
-            flush_quads(tex0);
-        }
-    }
-    return; // skip normal drawing for now
 
     float a = alpha / 255.0f;
     // Scale factors from D3's fixed 640x480 to 400x240
@@ -465,6 +467,65 @@ void rend_DrawChunkedBitmap(chunked_bitmap *chunk, int x, int y, uint8_t alpha) 
         }
         cur_y += row_h;
     }
+}
+
+// ---------------------------------------------------------------------------
+// rend_DrawFontCharacter
+// Draws one character glyph from a font atlas bitmap.
+// bm_handle  — bitmap page (128x128 font atlas)
+// x1,y1,x2,y2 — destination screen rect (pixels, D3 logical coords)
+// u,v        — top-left UV offset within the atlas (normalised 0..1)
+// w,h        — UV size of the glyph (normalised)
+// ---------------------------------------------------------------------------
+void rend_DrawFontCharacter(int bm_handle, int x1, int y1, int x2, int y2,
+                            float u, float v, float w, float h) {
+    if (!s_top) { printf("[CTR] DrawFontChar: no render target\n"); return; }
+    C3D_Tex *tex = get_tex(bm_handle);
+    if (!tex) { printf("[CTR] DrawFontChar: get_tex(%d) failed\n", bm_handle); return; }
+    static int call_count = 0;
+    if (call_count++ < 3)
+        printf("[CTR] DrawFontChar: bm=%d (%d,%d)-(%d,%d) uv=(%.3f,%.3f,%.3f,%.3f)\n",
+               bm_handle, x1,y1,x2,y2, u,v,w,h);
+
+    // D3 font coords are already in screen space (no 640->400 scaling needed
+    // here — grtext already works in the target resolution).
+    float sx = (float)CTR_TOP_W / 640.0f;
+    float sy = (float)CTR_TOP_H / 480.0f;
+
+    float dx  = x1 * sx;
+    float dy  = y1 * sy;
+    float dsw = (x2 - x1) * sx;
+    float dsh = (y2 - y1) * sy;
+
+    float u0 = u,     v0 = v;
+    float u1 = u + w, v1 = v + h;
+
+    push_quad(tex, dx, dy, dsw, dsh, u0, v0, u1, v1, 1.0f, 1.0f, 1.0f, 1.0f);
+    flush_quads(tex);
+}
+
+// ---------------------------------------------------------------------------
+// rend_DrawScaledBitmap
+// Draws a bitmap stretched to fill an arbitrary screen rect with custom UVs.
+// color=-1 means use full white; alphas array (per-corner) not supported yet.
+// ---------------------------------------------------------------------------
+void rend_DrawScaledBitmap(int x1, int y1, int x2, int y2, int bm,
+                           float u0, float v0, float u1, float v1,
+                           int /*color*/, const float * /*alphas*/) {
+    if (!s_top) return;
+    C3D_Tex *tex = get_tex(bm);
+    if (!tex) return;
+
+    float sx = (float)CTR_TOP_W / 640.0f;
+    float sy = (float)CTR_TOP_H / 480.0f;
+
+    float dx  = x1 * sx;
+    float dy  = y1 * sy;
+    float dsw = (x2 - x1) * sx;
+    float dsh = (y2 - y1) * sy;
+
+    push_quad(tex, dx, dy, dsw, dsh, u0, v0, u1, v1, 1.0f, 1.0f, 1.0f, 1.0f);
+    flush_quads(tex);
 }
 
 // ---------------------------------------------------------------------------

@@ -36,6 +36,8 @@
 #include "bitmap.h"
 #include "psrand.h"
 // 3DS-specific includes
+#include "grtext.h"
+#include "gamefont.h"
 #include "ctr_app.h"
 #include "ctr_database.h"
 #include "renderer.h"
@@ -95,11 +97,6 @@ int Max_window_h  = 240;
 // ---------------------------------------------------------------------------
 // Stubs for subsystems not yet ported
 // ---------------------------------------------------------------------------
-
-// grtext (renderer-dependent text system)
-void grtext_Init() {
-  printf("[3DS] grtext_Init stub\n");
-}
 
 // InitGraphics — initialise bitmaps and the citro3d renderer
 static void InitGraphics_stub() {
@@ -255,8 +252,8 @@ void InitMessage(const char *c, float /*progress*/) {
   StartFrame(true);
   if (CTR_Title_bitmap_init) {
     rend_ClearScreen(GR_BLACK);
-    int x = Game_window_w / 2 - CTR_Title_bitmap.pw / 2;
-    int y = Game_window_h / 2 - CTR_Title_bitmap.ph / 2;
+    int x = 0; //Game_window_w / 2 - CTR_Title_bitmap.pw / 2;
+    int y = 0; //Game_window_h / 2 - CTR_Title_bitmap.ph / 2;
     rend_DrawChunkedBitmap(&CTR_Title_bitmap, x, y, 255);
   }
   if (c) printf("[3DS] InitMessage: %s\n", c);
@@ -293,6 +290,23 @@ void InitD3Systems2(bool /*editor*/) {
 
   printf("[3DS] IntroScreen...\n");
   IntroScreen();
+
+  printf("[3DS] LoadAllFonts...\n");
+  LoadAllFonts();
+  printf("[3DS] Fonts loaded\n");
+
+  // Quick text render test
+  grtext_Reset();
+  if (CTR_Graphics_init) {
+    StartFrame(true);
+    rend_ClearScreen(GR_BLACK);
+    grtext_SetFont(SMALL_FONT);
+    grtext_SetColor(GR_WHITE);
+    grtext_Printf(10, 10, "Descent 3 - 3DS");
+    grtext_Printf(10, 30, "Font rendering OK!");
+    EndFrame();
+    rend_Flip();
+  }
 
   printf("[3DS] InitD3Systems2() complete (table loading deferred)\n");
 }
