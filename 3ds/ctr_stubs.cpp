@@ -96,3 +96,29 @@ void Osiris_ClearExtractedScripts(bool) {}
 // -----------------------------------------------------------------------
 int paged_in_count = 0;
 int paged_in_num   = 0;
+
+// -----------------------------------------------------------------------
+// game.cpp stubs — StartFrame / EndFrame / grtext_SetParameters
+// game.cpp is not compiled on 3DS; these thin wrappers call the renderer
+// directly, which is all InitMessage needs.
+// -----------------------------------------------------------------------
+#include "renderer.h"
+
+extern int Game_window_x, Game_window_y, Game_window_w, Game_window_h;
+
+void StartFrame(bool clear) {
+  rend_StartFrame(Game_window_x, Game_window_y,
+                  Game_window_x + Game_window_w,
+                  Game_window_y + Game_window_h,
+                  clear ? RF_CLEAR_ZBUFFER : 0);
+}
+void StartFrame(int x, int y, int x2, int y2, bool /*clear*/, bool /*push*/) {
+  rend_StartFrame(x, y, x2, y2);
+}
+void EndFrame() {
+  rend_EndFrame();
+}
+
+// grtext_SetParameters — sets clipping region for text rendering.
+// Stubbed until grtext is ported.
+void grtext_SetParameters(int, int, int, int) {}

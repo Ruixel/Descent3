@@ -38,6 +38,12 @@
 // 3DS-specific includes
 #include "ctr_app.h"
 #include "ctr_database.h"
+#include "renderer.h"
+// Forward declarations from game.cpp (not compiled on 3DS)
+extern void StartFrame(bool clear = true);
+extern void EndFrame();
+// Graphics ready flag — checked by our InitMessage replacement
+bool CTR_Graphics_init = false;
 
 // ---------------------------------------------------------------------------
 // Globals that normally live in descent.cpp
@@ -77,6 +83,15 @@ bool Dedicated_server = false;
 int  ServerTimeout = 0;
 float LastPacketReceived = 0.0f;
 
+// From game.cpp — screen/window dimensions
+// Top screen is 400x240; we present D3's 640x480 logical space scaled to that.
+int Game_window_x = 0;
+int Game_window_y = 0;
+int Game_window_w = 400;
+int Game_window_h = 240;
+int Max_window_w  = 400;
+int Max_window_h  = 240;
+
 // ---------------------------------------------------------------------------
 // Stubs for subsystems not yet ported
 // ---------------------------------------------------------------------------
@@ -86,10 +101,23 @@ void grtext_Init() {
   printf("[3DS] grtext_Init stub\n");
 }
 
-// InitGraphics — renderer not yet ported
+// InitGraphics — initialise bitmaps and the citro3d renderer
 static void InitGraphics_stub() {
-  printf("[3DS] InitGraphics stub — calling bm_InitBitmaps\n");
-  bm_InitBitmaps();   // initialises lightmaps/bumpmaps too; needed before lighting init
+  printf("[3DS] InitGraphics: bm_InitBitmaps\n");
+  bm_InitBitmaps();   // must come before lighting init
+
+  printf("[3DS] InitGraphics: rend_Init\n");
+  renderer_preferred_state pref{};
+  pref.width     = Game_window_w;
+  pref.height    = Game_window_h;
+  pref.bit_depth = 32;
+  int ok = rend_Init(RENDERER_OPENGL, Descent, &pref);
+  if (ok) {
+    CTR_Graphics_init = true;
+    printf("[3DS] InitGraphics: renderer ready\n");
+  } else {
+    printf("[3DS] InitGraphics: rend_Init FAILED\n");
+  }
 }
 
 // Sound system globals (declared extern in hlsoundlib.h, but we don't compile hlsoundlib.cpp)
@@ -210,8 +238,61 @@ void InitD3Systems1(bool editor) {
 }
 
 // ---------------------------------------------------------------------------
-// InitD3Systems2 — stub until table files / objects / menu are ported
+// IntroScreen / InitMessage — implemented here for 3DS.
+// init.cpp is not compiled on 3DS, so we provide these ourselves.
 // ---------------------------------------------------------------------------
-void InitD3Systems2(bool editor) {
-  printf("[3DS] InitD3Systems2() stub\n");
+
+// Chunked bitmap for the title/loading screen (oemmenu.ogf)
+static chunked_bitmap CTR_Title_bitmap;
+static bool           CTR_Title_bitmap_init = false;
+
+void InitMessage(const char *c, float /*progress*/) {
+  if (!CTR_Graphics_init) {
+    if (c) printf("[3DS] InitMessage: %s\n", c);
+    return;
+  }
+
+  StartFrame(true);
+  if (CTR_Title_bitmap_init) {
+    rend_ClearScreen(GR_BLACK);
+    int x = Game_window_w / 2 - CTR_Title_bitmap.pw / 2;
+    int y = Game_window_h / 2 - CTR_Title_bitmap.ph / 2;
+    rend_DrawChunkedBitmap(&CTR_Title_bitmap, x, y, 255);
+  }
+  if (c) printf("[3DS] InitMessage: %s\n", c);
+  EndFrame();
+  rend_Flip();
+}
+
+void IntroScreen() {
+  printf("[3DS] IntroScreen: calling bm_AllocLoadFileBitmap...\n");
+  int bm_handle = bm_AllocLoadFileBitmap("oemmenu.ogf", 0);
+  printf("[3DS] IntroScreen: bm_handle=%d\n", bm_handle);
+  if (bm_handle > -1) {
+    printf("[3DS] IntroScreen: creating chunked bitmap...\n");
+    if (!bm_CreateChunkedBitmap(bm_handle, &CTR_Title_bitmap))
+      printf("[3DS] IntroScreen: failed to create chunked bitmap\n");
+    else {
+      CTR_Title_bitmap_init = true;
+      printf("[3DS] IntroScreen: bitmap ready (%dx%d, %dx%d tiles)\n",
+             CTR_Title_bitmap.pw, CTR_Title_bitmap.ph,
+             CTR_Title_bitmap.w,  CTR_Title_bitmap.h);
+    }
+    bm_FreeBitmap(bm_handle);
+    InitMessage(nullptr);
+  } else {
+    printf("[3DS] IntroScreen: oemmenu.ogf not found in HOG\n");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// InitD3Systems2 — show intro screen then load table files / objects / etc.
+// ---------------------------------------------------------------------------
+void InitD3Systems2(bool /*editor*/) {
+  printf("[3DS] InitD3Systems2() start\n");
+
+  printf("[3DS] IntroScreen...\n");
+  IntroScreen();
+
+  printf("[3DS] InitD3Systems2() complete (table loading deferred)\n");
 }

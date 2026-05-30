@@ -40,14 +40,13 @@ C3D_RenderTarget *s_top = nullptr;
 // Shader
 DVLB_s          *s_dvlb    = nullptr;
 shaderProgram_s  s_prog;
+int              s_proj_loc = -1;  // uniform location for projection matrix
 
-// Attribute info for 2D quads: position(2) + uv(2) + colour(4 bytes packed)
-// We'll use floats throughout to keep it simple.
-// Layout per vertex: x, y, u, v, r, g, b, a  (8 floats = 32 bytes)
+// Vertex layout: pixel-space position (x,y,z,w) + texcoord (u,v,0,0) + colour (r,g,b,a)
 struct Vert2D {
-    float x, y;   // clip space [-1..1]
-    float u, v;   // texcoord   [0..1]
-    float r, g, b, a; // colour tint
+    float x, y, z, w;   // pixel coords, z=0 w=1
+    float u, v, s, t;   // texcoord, s/t=0
+    float r, g, b, a;   // colour tint
 };
 
 // Small immediate-mode VBO — 6 verts per quad (2 tris), max 64 quads per flush
@@ -139,14 +138,16 @@ static inline uint32_t argb1555_to_rgba8(uint16_t p) {
 static bool upload_bitmap(int handle, C3D_Tex *tex) {
     if (handle < 0 || handle >= MAX_BITMAPS) return false;
     bms_bitmap *bm = &GameBitmaps[handle];
-    if (!bm->used || !bm->data16) return false;
+    if (!bm->used) { printf("[CTR] upload_bitmap %d: not used\n", handle); return false; }
+    if (!bm->data16) { printf("[CTR] upload_bitmap %d: data16 is null\n", handle); return false; }
 
     int w = bm->width, h = bm->height;
     uint32_t tw = next_pot(w), th = next_pot(h);
+    printf("[CTR] upload_bitmap %d: %dx%d -> POT %dx%d\n", handle, w, h, tw, th);
 
     // Convert ARGB1555 → RGBA8 linear
     uint32_t *linear = (uint32_t *)linearAlloc(tw * th * 4);
-    if (!linear) return false;
+    if (!linear) { printf("[CTR] upload_bitmap: linearAlloc failed (%dx%d)\n", tw, th); return false; }
     memset(linear, 0, tw * th * 4);
 
     uint16_t *src = bm->data16;
@@ -222,29 +223,25 @@ static void flush_quads(C3D_Tex *tex) {
 // Push a textured quad (two triangles). Coords in screen pixels (0..CTR_TOP_W, 0..CTR_TOP_H).
 // Flushes if the buffer is full.
 static void push_quad(C3D_Tex *tex,
-                      float sx, float sy, float sw, float sh,  // screen rect
+                      float sx, float sy, float sw, float sh,  // screen pixel rect
                       float u0, float v0, float u1, float v1,  // UV rect
                       float r, float g, float b, float a) {
     if (s_vbo_count + 6 > MAX_QUADS * 6)
         flush_quads(tex);
 
-    // Convert screen pixels to clip space [-1..1]
-    // 3DS top screen: x right, y up; origin at centre.
-    auto px = [](float x) { return (x / CTR_TOP_W) * 2.0f - 1.0f; };
-    auto py = [](float y) { return 1.0f - (y / CTR_TOP_H) * 2.0f; };
-
-    float x0 = px(sx),      y0 = py(sy);
-    float x1 = px(sx + sw), y1 = py(sy + sh);
+    // Feed pixel coordinates directly — the projection matrix handles the rest
+    float x0 = sx,      y0 = sy;
+    float x1 = sx + sw, y1 = sy + sh;
 
     Vert2D *v = &s_vbo_data[s_vbo_count];
     // Triangle 1
-    v[0] = {x0, y0, u0, v0, r, g, b, a};
-    v[1] = {x1, y0, u1, v0, r, g, b, a};
-    v[2] = {x1, y1, u1, v1, r, g, b, a};
+    v[0] = {x0, y0, 0, 1,  u0, v0, 0, 0,  r, g, b, a};
+    v[1] = {x1, y0, 0, 1,  u1, v0, 0, 0,  r, g, b, a};
+    v[2] = {x1, y1, 0, 1,  u1, v1, 0, 0,  r, g, b, a};
     // Triangle 2
-    v[3] = {x0, y0, u0, v0, r, g, b, a};
-    v[4] = {x1, y1, u1, v1, r, g, b, a};
-    v[5] = {x0, y1, u0, v1, r, g, b, a};
+    v[3] = {x0, y0, 0, 1,  u0, v0, 0, 0,  r, g, b, a};
+    v[4] = {x1, y1, 0, 1,  u1, v1, 0, 0,  r, g, b, a};
+    v[5] = {x0, y1, 0, 1,  u0, v1, 0, 0,  r, g, b, a};
     s_vbo_count += 6;
 }
 
@@ -266,15 +263,21 @@ static void setup_tev() {
 
 renderer_type Renderer_type = RENDERER_OPENGL;  // closest match for D3's logic
 
+// Set to true by ctr_platform_init after C3D_Init succeeds
+extern bool g_c3d_ready;
+
 int rend_Init(renderer_type /*type*/, oeApplication * /*app*/,
               renderer_preferred_state * /*pref*/) {
     printf("[CTR] rend_Init\n");
 
+    if (!g_c3d_ready) {
+        printf("[CTR] rend_Init: citro3d not initialised — aborting\n");
+        return 0;
+    }
+
     init_tex_cache();
 
-    // Initialise citro3d (may already be done by ctr_platform.cpp — C3D_Init
-    // is idempotent if called again with the same buf size)
-    C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
+    // C3D_Init is called once in ctr_platform_init() — do not call again here.
 
     // Create top-screen render target (rotated: fb is 240x400)
     s_top = C3D_RenderTargetCreate(CTR_FB_W, CTR_FB_H,
@@ -292,20 +295,51 @@ int rend_Init(renderer_type /*type*/, oeApplication * /*app*/,
                                GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
 
     // Load and compile the 2D vertex shader
-    s_dvlb = DVLB_ParseFile((u32 *)vshader_2d_shbin,
-                              (u32)vshader_2d_shbin_size);
-    shaderProgramInit(&s_prog);
-    shaderProgramSetVsh(&s_prog, &s_dvlb->DVLE[0]);
-    C3D_BindProgram(&s_prog);
+    printf("[CTR] rend_Init: parsing shader binary (%u bytes)\n", (u32)vshader_2d_shbin_size);
+    s_dvlb = DVLB_ParseFile((u32 *)vshader_2d_shbin, (u32)vshader_2d_shbin_size);
+    if (!s_dvlb) { printf("[CTR] rend_Init: DVLB_ParseFile returned null!\n"); return 0; }
+    printf("[CTR] rend_Init: DVLB ok, numDVLE=%lu\n", (unsigned long)s_dvlb->numDVLE);
 
-    // Attribute layout: attrib 0 = position (2 floats), 1 = uv (2), 2 = colour (4)
+    Result r;
+    r = shaderProgramInit(&s_prog);
+    printf("[CTR] rend_Init: shaderProgramInit: %ld\n", (long)r);
+    r = shaderProgramSetVsh(&s_prog, &s_dvlb->DVLE[0]);
+    printf("[CTR] rend_Init: shaderProgramSetVsh: %ld\n", (long)r);
+    C3D_BindProgram(&s_prog);
+    printf("[CTR] rend_Init: C3D_BindProgram\n");
+
+    // Get projection uniform location
+    s_proj_loc = shaderInstanceGetUniformLocation(s_prog.vertexShader, "projection");
+    printf("[CTR] rend_Init: projection uniform loc=%d\n", s_proj_loc);
+
+    // Upload orthographic projection: pixel coords (0..400, 0..240) -> clip space
+    // The FB is rotated (240x400 internally), so we map:
+    //   x: 0..400 -> -1..+1  (along FB height axis)
+    //   y: 0..240 -> +1..-1  (along FB width axis, flipped)
+    // Matrix is column-major, 4 rows of vec4.
+    // ortho: scale x by 2/400, scale y by -2/240, translate -1,+1
+    C3D_Mtx proj;
+    Mtx_Identity(&proj);
+    Mtx_OrthoTilt(&proj, 0.0f, CTR_TOP_W, CTR_TOP_H, 0.0f, -1.0f, 1.0f, true);
+    C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, s_proj_loc, &proj);
+    printf("[CTR] rend_Init: projection matrix uploaded\n");
+
+    // Attribute layout — all 4 floats per attrib for immediate mode compatibility
     C3D_AttrInfo *ai = C3D_GetAttrInfo();
     AttrInfo_Init(ai);
-    AttrInfo_AddLoader(ai, 0, GPU_FLOAT, 2);  // v0 position
-    AttrInfo_AddLoader(ai, 1, GPU_FLOAT, 2);  // v1 texcoord
-    AttrInfo_AddLoader(ai, 2, GPU_FLOAT, 4);  // v2 colour
-
+    AttrInfo_AddLoader(ai, 0, GPU_FLOAT, 4);  // v0: x, y, z, w
+    AttrInfo_AddLoader(ai, 1, GPU_FLOAT, 4);  // v1: u, v, s, t
+    AttrInfo_AddLoader(ai, 2, GPU_FLOAT, 4);  // v2: r, g, b, a
+    printf("[CTR] rend_Init: AttrInfo set\n");
     setup_tev();
+    printf("[CTR] rend_Init: TEV set\n");
+
+    // Disable back-face culling for 2D quads
+    C3D_CullFace(GPU_CULL_NONE);
+    printf("[CTR] rend_Init: CullFace set\n");
+
+    // Depth test off — 2D quads drawn in submission order
+    C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_COLOR);
 
     printf("[CTR] rend_Init: OK\n");
     return 1;
@@ -332,8 +366,8 @@ void rend_StartFrame(int /*x1*/, int /*y1*/, int /*x2*/, int /*y2*/,
     C3D_RenderTargetClear(s_top, C3D_CLEAR_ALL, s_clear_color, 0);
     C3D_FrameDrawOn(s_top);
 
-    // Re-bind shader + TEV each frame (citro3d state can drift)
-    C3D_BindProgram(&s_prog);
+    // Re-upload shader + TEV each frame (citro3d state can drift)
+    shaderProgramUse(&s_prog);
     setup_tev();
     s_tev_ready = true;
 }
@@ -369,6 +403,25 @@ void rend_ClearScreen(ddgr_color color) {
 // ---------------------------------------------------------------------------
 void rend_DrawChunkedBitmap(chunked_bitmap *chunk, int x, int y, uint8_t alpha) {
     if (!chunk || !s_top) return;
+    printf("[CTR] DrawChunkedBitmap: %dx%d tiles, pw=%d ph=%d, at (%d,%d)\n",
+           chunk->w, chunk->h, chunk->pw, chunk->ph, x, y);
+
+    // --- Sanity test: draw tile 0 in top-left corner using push_quad ---
+    {
+        int bm0 = chunk->bm_array[0];
+        C3D_Tex *tex0 = get_tex(bm0);
+        if (tex0) {
+            printf("[CTR] Sanity: drawing tile 0 (%dx%d) at (0,0)\n",
+                   GameBitmaps[bm0].width, GameBitmaps[bm0].height);
+            float tw = GameBitmaps[bm0].width;
+            float th = GameBitmaps[bm0].height;
+            float u1 = tw / tex0->width;
+            float v1 = th / tex0->height;
+            push_quad(tex0, 0, 0, tw, th, 0, 0, u1, v1, 1, 1, 1, 1);
+            flush_quads(tex0);
+        }
+    }
+    return; // skip normal drawing for now
 
     float a = alpha / 255.0f;
     // Scale factors from D3's fixed 640x480 to 400x240

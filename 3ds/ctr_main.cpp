@@ -5,7 +5,6 @@
 #include <stdio.h>
 
 #include "ctr_platform.h"
-#include "renderer.h"
 #include "args.h"
 #include "init.h"
 #include "cfile.h"
@@ -70,33 +69,19 @@ int main(int argc, char *argv[])
     printf("Calling InitD3Systems1()...\n");
     InitD3Systems1(false);
     printf("InitD3Systems1() done!\n");
-//
-// Temporary renderer smoke test
-extern oeApplication *Descent;
-rend_Init(RENDERER_OPENGL, Descent, nullptr);
-rend_StartFrame(0, 0, 400, 240, 0);
-rend_ClearScreen(GR_RGB(0xFF, 0x00, 0x80)); // hot pink
-rend_EndFrame();
 
-while (aptMainLoop()) {
-    hidScanInput();
-    if (hidKeysDown() & KEY_START) break;
-    gspWaitForVBlank();
-}
+    printf("Calling InitD3Systems2()...\n");
+    InitD3Systems2(false);
+    printf("InitD3Systems2() done!\n");
 
     printf("\nPress START to exit.\n");
 
-    // Main loop — keep the applet alive until the user quits.
+    // Hold the intro screen until the user presses Start
     while (aptMainLoop())
     {
         hidScanInput();
-        u32 keys = hidKeysDown();
-
-        if (keys & KEY_START)
+        if (hidKeysDown() & KEY_START)
             break;
-
-        gfxFlushBuffers();
-        gfxSwapBuffers();
         gspWaitForVBlank();
     }
 
