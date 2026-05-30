@@ -300,7 +300,7 @@ configure_file(
   @ONLY
 )
 
-if(UNIX AND NOT APPLE)
+if(UNIX AND NOT APPLE AND NOT NINTENDO_3DS)
   set(PLATFORM_LIBS m ${CMAKE_DL_LIBS})
 endif()
 
@@ -314,64 +314,114 @@ if(APPLE)
   set_source_files_properties(${D3Icon} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
 endif()
 
-file(GLOB_RECURSE INCS "../lib/*.h")
+if(NINTENDO_3DS)
+  # -------------------------------------------------------------------
+  # 3DS build: minimal entry point only. Add .cpp files back one by one
+  # as their dependencies are stubbed/ported.
+  # -------------------------------------------------------------------
+  add_executable(Descent3 ${CMAKE_SOURCE_DIR}/3ds/ctr_main.cpp)
+  target_include_directories(Descent3 PRIVATE
+    ${CMAKE_SOURCE_DIR}/3ds
+    ${PROJECT_BINARY_DIR}/lib
+    ${CTRULIB}/include
+  )
+  target_link_libraries(Descent3 PRIVATE
+    platform3ds  # provides ddio, linux, renderer, sndlib stubs + aliases
+    mem
+    ddebug
+    logger
+    fix
+    vecmat
+    cfile
+    misc
+    unzip
+    md5
+    citro3d
+    ctru
+    m
+  )
+  set_target_properties(Descent3 PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/build")
+  # No HOG/script dependencies on 3DS yet
+  add_dependencies(Descent3 get_git_hash)
 
-add_executable(Descent3 WIN32 MACOSX_BUNDLE ${D3Icon} ${HEADERS} ${CPPS} ${INCS} ${MANIFEST} ${RC_FILE})
-target_link_libraries(Descent3 PRIVATE
-  SDL3::SDL3
-  2dlib
-  AudioEncode
-  bitmap
-  cfile
-  ddebug
-  ddio
-  fix
-  grtext
-  inetfile
-  libmve
-  libacm
-  linux
-  logger
-  manage
-  mem
-  md5
-  misc
-  model
-  module
-  music
-  networking
-  physics
-  renderer
-  rtperformance
-  sndlib
-  stream_audio
-  ui
-  unzip
-  vecmat
-  ${PLATFORM_LIBS})
-target_include_directories(Descent3 PRIVATE ${PROJECT_BINARY_DIR}/lib ${SDL3_INCLUDE_DIRS})
-target_link_options(Descent3 PRIVATE $<$<PLATFORM_ID:Windows>:/DEBUG:FULL>)
-set_target_properties(Descent3 PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/build")
-add_dependencies(Descent3
-  get_git_hash
-  Direct_TCP_IP_Hog
-  Descent3_Online_TCP_IP_Hog
-  HogFull
-  Parallax_Online_Hog
-  anarchy
-  coop
-  ctf
-  entropy
-  hoard
-  hyperanarchy
-  monsterball
-  roboanarchy
-  tanarchy
-)
+  # Generate SMDH and .3dsx after the ELF is linked
+  set(D3_ICON ${CMAKE_SOURCE_DIR}/3ds/icon.png)
+  set(D3_SMDH ${CMAKE_BINARY_DIR}/build/Descent3.smdh)
+  set(D3_3DSX ${CMAKE_BINARY_DIR}/build/Descent3.3dsx)
 
-install(TARGETS Descent3 RUNTIME BUNDLE DESTINATION .)
-if(MSVC)
-  install(FILES $<TARGET_PDB_FILE:Descent3> DESTINATION ${CMAKE_INSTALL_BINDIR})
+  find_program(SMDHTOOL smdhtool PATHS ${DEVKITPRO}/tools/bin REQUIRED)
+  find_program(TOOL_3DSXTOOL 3dsxtool PATHS ${DEVKITPRO}/tools/bin REQUIRED)
+
+  add_custom_command(TARGET Descent3 POST_BUILD
+    COMMAND ${SMDHTOOL} --create "Descent 3" "Descent3 3DS Port" "Parallax Software / Community"
+            ${D3_ICON} ${D3_SMDH}
+    COMMAND ${TOOL_3DSXTOOL} $<TARGET_FILE:Descent3> ${D3_3DSX} --smdh=${D3_SMDH}
+    COMMENT "Generating Descent3.smdh and Descent3.3dsx"
+  )
+
+else()
+  # -------------------------------------------------------------------
+  # Desktop build (Linux / macOS / Windows) — original configuration
+  # -------------------------------------------------------------------
+  file(GLOB_RECURSE INCS "../lib/*.h")
+
+  add_executable(Descent3 WIN32 MACOSX_BUNDLE ${D3Icon} ${HEADERS} ${CPPS} ${INCS} ${MANIFEST} ${RC_FILE})
+  target_link_libraries(Descent3 PRIVATE
+    SDL3::SDL3
+    2dlib
+    AudioEncode
+    bitmap
+    cfile
+    ddebug
+    ddio
+    fix
+    grtext
+    inetfile
+    libmve
+    libacm
+    linux
+    logger
+    manage
+    mem
+    md5
+    misc
+    model
+    module
+    music
+    networking
+    physics
+    renderer
+    rtperformance
+    sndlib
+    stream_audio
+    ui
+    unzip
+    vecmat
+    ${PLATFORM_LIBS})
+  target_include_directories(Descent3 PRIVATE ${PROJECT_BINARY_DIR}/lib ${SDL3_INCLUDE_DIRS})
+  target_link_options(Descent3 PRIVATE $<$<PLATFORM_ID:Windows>:/DEBUG:FULL>)
+  set_target_properties(Descent3 PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/build")
+  add_dependencies(Descent3
+    get_git_hash
+    Direct_TCP_IP_Hog
+    Descent3_Online_TCP_IP_Hog
+    HogFull
+    Parallax_Online_Hog
+    anarchy
+    coop
+    ctf
+    entropy
+    hoard
+    hyperanarchy
+    monsterball
+    roboanarchy
+    tanarchy
+  )
+
+  install(TARGETS Descent3 RUNTIME BUNDLE DESTINATION .)
+  if(MSVC)
+    install(FILES $<TARGET_PDB_FILE:Descent3> DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
 endif()
 
 if(BUILD_TESTING)

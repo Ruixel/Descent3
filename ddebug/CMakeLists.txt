@@ -14,6 +14,9 @@ set(CPPS
     windebug.cpp
     winmono.cpp
   >
+  $<$<BOOL:${NINTENDO_3DS}>:
+    ${CMAKE_SOURCE_DIR}/3ds/ctr_debug.cpp
+  >
 )
 
 add_library(ddebug STATIC ${HEADERS} ${CPPS})
@@ -23,7 +26,7 @@ target_include_directories(ddebug PUBLIC
   ${PROJECT_SOURCE_DIR}/ddebug
   >
   PRIVATE ${PROJECT_BINARY_DIR}/lib   # For d3_version.h
-  ${SDL3_INCLUDE_DIRS}
+  $<$<NOT:$<BOOL:${NINTENDO_3DS}>>:${SDL3_INCLUDE_DIRS}>
 )
 target_link_libraries(ddebug PRIVATE
   $<$<PLATFORM_ID:Windows>:
@@ -31,6 +34,6 @@ target_link_libraries(ddebug PRIVATE
     misc
   >
   PUBLIC
-  SDL3::SDL3
+  $<$<NOT:$<BOOL:${NINTENDO_3DS}>>:SDL3::SDL3>
   logger
 )

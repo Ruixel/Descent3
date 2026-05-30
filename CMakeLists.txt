@@ -145,7 +145,9 @@ if(BUILD_TESTING)
 endif()
 
 # Define names for HOG files
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
+if(NINTENDO_3DS)
+  set(HOG_NAME "3ds")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
   set(HOG_NAME "linux")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   set(HOG_NAME "osx")
@@ -178,29 +180,44 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
   add_compile_options("-Wno-multichar;-Wall")
 endif()
 
-find_package(SDL3 3.2.6 REQUIRED CONFIG REQUIRED COMPONENTS SDL3)
-find_package(glm REQUIRED)
-find_package(httplib QUIET)
-if (TARGET httplib::httplib)
-  add_library(httplib ALIAS httplib::httplib)
-else()
-  # Some Linux distributions do not package httplibConfig.cmake, so find the header manually
-  find_file(CPP_HTTPLIB_HEADER httplib.h REQUIRED)
-  find_library(CPP_HTTPLIB_LIB cpp-httplib QUIET)
+if(NOT NINTENDO_3DS)
+  find_package(SDL3 3.2.6 REQUIRED CONFIG REQUIRED COMPONENTS SDL3)
+  find_package(glm REQUIRED)
+  find_package(httplib QUIET)
+  if (TARGET httplib::httplib)
+    add_library(httplib ALIAS httplib::httplib)
+  else()
+    # Some Linux distributions do not package httplibConfig.cmake, so find the header manually
+    find_file(CPP_HTTPLIB_HEADER httplib.h REQUIRED)
+    find_library(CPP_HTTPLIB_LIB cpp-httplib QUIET)
 
-  # The target httplib::httplib cannot be created manually, so rename it
-  add_library(httplib INTERFACE ${CPP_HTTPLIB_HEADER})
+    # The target httplib::httplib cannot be created manually, so rename it
+    add_library(httplib INTERFACE ${CPP_HTTPLIB_HEADER})
 
-  # And some Linux distributions build httplib as header-only,
-  # and some as header+library. What a mess!
-  if (NOT ${CPP_HTTPLIB_LIB} STREQUAL "CPP_HTTPLIB_LIB-NOTFOUND")
-    target_link_libraries(httplib INTERFACE ${CPP_HTTPLIB_LIB})
-  endif ()
+    # And some Linux distributions build httplib as header-only,
+    # and some as header+library. What a mess!
+    if (NOT ${CPP_HTTPLIB_LIB} STREQUAL "CPP_HTTPLIB_LIB-NOTFOUND")
+      target_link_libraries(httplib INTERFACE ${CPP_HTTPLIB_LIB})
+    endif ()
+  endif()
+  find_package(plog REQUIRED)
 endif()
-find_package(ZLIB REQUIRED)
-find_package(plog REQUIRED)
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
+# ZLIB is available on all platforms (portlibs/3ds has libz)
+find_package(ZLIB REQUIRED)
+
+if(NINTENDO_3DS)
+  # plog is a header-only logging library not present in portlibs.
+  # Provide a no-op stub so logger/ and anything else that links plog::plog compiles.
+  add_library(plog_stub INTERFACE)
+  target_include_directories(plog_stub INTERFACE ${CMAKE_SOURCE_DIR}/3ds/plog)
+  add_library(plog::plog ALIAS plog_stub)
+endif()
+
+if(NINTENDO_3DS)
+  message("Building for 3DS")
+  add_compile_definitions(__3DS__ ARM11 PRIMARY_HOG=\"d3-3ds.hog\")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
   message("Building for Linux")
   add_compile_definitions(POSIX __LINUX__ _USE_OGL_ACTIVE_TEXTURES PRIMARY_HOG=\"d3-linux.hog\")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -264,8 +281,14 @@ include_directories(
   "ddebug"  # -*-
   "fix"     # -*-
   "lib"     # TODO: Remove after untying all modules
-  "linux"   # -*-
   "Descent3"
+  $<$<BOOL:${NINTENDO_3DS}>:
+    "3ds"
+    "ddio"   # headers only — compiled code replaced by platform3ds
+  >
+  $<$<NOT:$<BOOL:${NINTENDO_3DS}>>:
+    "linux"
+  >
   $<$<PLATFORM_ID:Windows>:
     "lib/win/DirectX"
     "lib/win"
@@ -279,28 +302,34 @@ add_subdirectory(AudioEncode)
 add_subdirectory(bitmap)
 add_subdirectory(cfile)
 add_subdirectory(ddebug)
-add_subdirectory(linux)
-add_subdirectory(ddio)
 add_subdirectory(fix)
 add_subdirectory(logger)
-add_subdirectory(manage)
-add_subdirectory(grtext)
 add_subdirectory(mem)
 add_subdirectory(misc)
-add_subdirectory(model)
-add_subdirectory(module)
-add_subdirectory(music)
-add_subdirectory(networking)
-add_subdirectory(physics)
-add_subdirectory(renderer)
-add_subdirectory(rtperformance)
-add_subdirectory(sndlib)
-add_subdirectory(stream_audio)
-add_subdirectory(ui)
-add_subdirectory(unzip)
 add_subdirectory(vecmat)
-add_subdirectory(libmve)
+add_subdirectory(unzip)
 add_subdirectory(md5)
+
+if(NINTENDO_3DS)
+  # Platform layer: 3DS-specific implementations (replaces linux/ and ddio/)
+  add_subdirectory(3ds)
+else()
+  add_subdirectory(linux)
+  add_subdirectory(ddio)
+  add_subdirectory(manage)
+  add_subdirectory(grtext)
+  add_subdirectory(model)
+  add_subdirectory(module)
+  add_subdirectory(music)
+  add_subdirectory(networking)
+  add_subdirectory(physics)
+  add_subdirectory(renderer)
+  add_subdirectory(rtperformance)
+  add_subdirectory(sndlib)
+  add_subdirectory(stream_audio)
+  add_subdirectory(ui)
+  add_subdirectory(libmve)
+endif()
 
 if(BUILD_EDITOR AND CMAKE_SYSTEM_NAME STREQUAL "Windows")
   add_subdirectory(dd_grwin32)
@@ -310,15 +339,17 @@ endif()
 
 add_subdirectory(Descent3)
 
-if (CMAKE_CROSSCOMPILING)
-  find_package(HogMaker REQUIRED)
-else()
-  add_subdirectory(tools)
-endif()
+if(NOT NINTENDO_3DS)
+  if (CMAKE_CROSSCOMPILING)
+    find_package(HogMaker REQUIRED)
+  else()
+    add_subdirectory(tools)
+  endif()
 
-add_subdirectory(netcon)
-add_subdirectory(netgames)
-add_subdirectory(scripts)
+  add_subdirectory(netcon)
+  add_subdirectory(netgames)
+  add_subdirectory(scripts)
+endif()
 
 # Packaging stuff
 set(CPACK_SOURCE_GENERATOR "TXZ")

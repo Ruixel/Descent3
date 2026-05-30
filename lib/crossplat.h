@@ -28,10 +28,11 @@
 #include <cstdlib> // _MAX_PATH, _MAX_FNAME, _MAX_EXT for WIN32
 #include <io.h>    // _chmod
 
-#elif defined(POSIX)
+#elif defined(POSIX) || defined(__3DS__)
 
 #include <cctype>      // tolower, toupper
-#include <cstring>     // strcasecmp, strncasecmp
+#include <cstring>     // memcpy etc
+#include <strings.h>   // strcasecmp, strncasecmp (POSIX / newlib)
 #include <sys/stat.h>  // chmod
 
 inline char *_strlwr(char *string) {

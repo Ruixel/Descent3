@@ -188,18 +188,25 @@
  *
  * $NoKeywords: $
  */
+// On 3DS, use the POSIX (malloc-based) code path throughout this file.
+#if defined(__3DS__) && !defined(POSIX)
+#define POSIX
+#endif
+
 #if !defined(POSIX)
 #include <new.h>
 #endif
 #if defined(MACOSX)
-
 #include <malloc/malloc.h>
+#elif defined(__3DS__)
+// newlib on 3DS provides malloc via stdlib
 #else
 #include <malloc.h>
 #endif
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <string.h>   // strdup on newlib/3DS
 #ifdef WIN32
 // Non-Linux Includes
 #include <windows.h>
@@ -273,6 +280,8 @@ void mem_free_sub(void *memblock) {
   if (memblock) {
 #if defined(MACOSX)
     LnxTotalMemUsed -= malloc_size(memblock);
+#elif defined(__3DS__)
+    // newlib has no malloc_usable_size; skip tracking (LnxTotalMemUsed drifts but won't crash)
 #else
     LnxTotalMemUsed -= malloc_usable_size(memblock);
 #endif
@@ -286,7 +295,13 @@ void mem_error_msg(const char *file, int line, int size) {
 }
 
 char *mem_strdup_sub(const char *string, const char *file, int line) {
+#if defined(__3DS__)
+  // newlib doesn't expose strdup without _GNU_SOURCE; implement manually
+  char *ret = (char *)malloc(strlen(string) + 1);
+  if (ret) strcpy(ret, string);
+#else
   char *ret = strdup(string);
+#endif
   if (!ret) {
     LOG_ERROR.printf("Out of memory allocating %d bytes: line %d in %s", strlen(string) + 1, line, file);
     Int3();
@@ -300,6 +315,8 @@ void *mem_realloc_sub(void *mem, int size) { return realloc(mem, size); }
 int mem_size_sub(void *memblock) {
 #ifdef MACOSX
   return malloc_size(memblock);
+#elif defined(__3DS__)
+  return 0; // newlib has no malloc_usable_size
 #else
   return malloc_usable_size(memblock);
 #endif

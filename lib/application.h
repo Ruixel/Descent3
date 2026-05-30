@@ -110,6 +110,8 @@ public:
 */
 #if defined(DX_APP)
 #include "win\win32app.h"
+#elif defined(__3DS__)
+#include "ctr_app.h"
 #else
 #include "lnxapp.h"
 #endif
