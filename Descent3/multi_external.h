@@ -107,7 +107,7 @@
 #ifndef __MULTI_EXTERNAL_H_
 #define __MULTI_EXTERNAL_H_
 
-#if defined(POSIX)
+#if defined(POSIX) || defined(__3DS__)
 #include <cstring>
 #include <cstdint>
 typedef uintptr_t DWORD;
@@ -264,7 +264,7 @@ struct netgame_info {
   int respawn_time;
   int max_players;
   uint8_t difficulty; // Game difficulty level
-  u_char digest[16];
+  uint8_t digest[16];
 };
 
 // Inline functions for extracting/packing multiplayer data

@@ -10,6 +10,7 @@ set(CPPS
   ctr_ddio.cpp       # ddio stubs (input, file I/O)
   ctr_renderer.cpp   # renderer stubs (replaces OpenGL renderer)
   ctr_sound.cpp      # sound stubs
+  ctr_stubs.cpp      # misc subsystem stubs (sndlib arrays, UI, Osiris, etc.)
   ${CMAKE_SOURCE_DIR}/ddio/chrono_timer.cpp  # portable timer via std::chrono
 )
 
@@ -18,6 +19,12 @@ add_library(platform3ds STATIC ${HEADERS} ${CPPS})
 target_include_directories(platform3ds PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   ${CTRULIB}/include
+  ${CMAKE_SOURCE_DIR}/sndlib
+  ${CMAKE_SOURCE_DIR}/Descent3
+  ${CMAKE_SOURCE_DIR}/lib
+  ${CMAKE_SOURCE_DIR}/ui
+  ${CMAKE_SOURCE_DIR}/grtext
+  ${PROJECT_BINARY_DIR}/lib
 )
 
 target_link_libraries(platform3ds PUBLIC

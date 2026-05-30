@@ -26,7 +26,7 @@
 #define USE_RTP
 #endif
 
-#if defined(POSIX)
+#if defined(POSIX) || defined(__3DS__)
 // #if defined(POSIX)
 #ifdef USE_RTP
 #undef USE_RTP // no rtp for now

@@ -74,6 +74,11 @@
 #ifndef MEM_H
 #define MEM_H
 #include <cstdlib>
+#include <cstring>
+#ifdef __3DS__
+// newlib has strdup but gates it behind _DEFAULT_SOURCE; declare it directly.
+extern "C" char *strdup(const char *s);
+#endif
 #include <type_traits>
 
 // Memory management debugging

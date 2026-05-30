@@ -675,6 +675,7 @@
 #include "multi.h"
 #include "module.h"
 #include "hud.h"
+#include "ui.h"
 #include "localization.h"
 #include "levelgoal.h"
 

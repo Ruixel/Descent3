@@ -324,20 +324,48 @@ if(NINTENDO_3DS)
 
   add_executable(Descent3
     ${CMAKE_SOURCE_DIR}/3ds/ctr_main.cpp
-    ${CMAKE_SOURCE_DIR}/3ds/ctr_init.cpp  # Minimal PreInitD3Systems shim
-    # Game source files — added back progressively as deps are resolved
+    ${CMAKE_SOURCE_DIR}/3ds/ctr_init.cpp
+    # Core game files
     args.cpp
     program.cpp
     localization.cpp
+    # Data-structure init (InitD3Systems1 callees)
+    objinfo.cpp
+    vclip.cpp
+    room.cpp
+    lightmap_info.cpp
+    special_face.cpp
+    lighting.cpp
+    Mission.cpp
+    ship.cpp
+    matcen.cpp
+    door.cpp
+    gamefile.cpp
+    terrain.cpp
+    bnode.cpp
+    BOA.cpp
+    # cinematics.cpp — deferred: needs mve/hlsSystem stubs
+    # From other libs compiled inline for 3DS
+    # soundload.cpp omitted — replaced by ctr_sound_stubs.cpp in platform3ds
+    ${CMAKE_SOURCE_DIR}/physics/findintersection.cpp
+    ${CMAKE_SOURCE_DIR}/model/polymodel.cpp
   )
   target_include_directories(Descent3 PRIVATE
     ${CMAKE_SOURCE_DIR}/3ds
     ${CMAKE_SOURCE_DIR}/Descent3
     ${PROJECT_BINARY_DIR}/lib
     ${CTRULIB}/include
+    ${CMAKE_SOURCE_DIR}/sndlib
+    ${CMAKE_SOURCE_DIR}/physics
+    ${CMAKE_SOURCE_DIR}/model
+    ${CMAKE_SOURCE_DIR}/grtext
+    ${CMAKE_SOURCE_DIR}/ui
+    ${CMAKE_SOURCE_DIR}/module
+    ${CMAKE_SOURCE_DIR}/rtperformance
   )
   target_link_libraries(Descent3 PRIVATE
     platform3ds  # provides ddio, linux, renderer, sndlib stubs + aliases
+    bitmap
     mem
     ddebug
     logger

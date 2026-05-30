@@ -34,6 +34,9 @@
 #include <cstring>     // memcpy etc
 #include <strings.h>   // strcasecmp, strncasecmp (POSIX / newlib)
 #include <sys/stat.h>  // chmod
+#ifdef __3DS__
+#include <string.h>    // strdup (newlib exposes it here)
+#endif
 
 inline char *_strlwr(char *string) {
   char *ptr = string;

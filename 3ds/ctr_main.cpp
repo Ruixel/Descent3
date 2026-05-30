@@ -19,7 +19,8 @@ int main(int argc, char *argv[])
 
     // Fake argv so GatherArgs has something to work with
     char arg0[] = "Descent3";
-    char *fakeArgs[] = { arg0, nullptr };  // nullptr terminates the argv array
+    char arg1[] = "-nonetwork";  // skip nw_InitNetworking in InitD3Systems1
+    char *fakeArgs[] = { arg0, arg1, nullptr };  // nullptr terminates the argv array
     GatherArgs(fakeArgs);
 
     printf("Calling PreInitD3Systems()...\n");

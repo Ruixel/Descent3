@@ -101,6 +101,8 @@
 #define MODULE_EXT ".so"
 #elif defined(MACOSX)
 #define MODULE_EXT ".dylib"
+#elif defined(__3DS__)
+#define MODULE_EXT ".3ds_unused"  // no dynamic modules on 3DS
 #else
 #error Unsupported platform!
 #endif
@@ -117,8 +119,8 @@ struct module {
   HINSTANCE handle; // handle to the DLL
 };
 //=======================================================================
-#elif defined(POSIX)
-//==========================Linux Definitions============================
+#elif defined(POSIX) || defined(__3DS__)
+//==========================Linux / 3DS Definitions=====================
 
 #define MODPROCADDRESS void *
 #define DLLFUNCEXPORT __attribute__((visibility("default")))
@@ -126,7 +128,7 @@ struct module {
 #define DLLEXPORT CPPEXTERN DLLFUNCEXPORT
 
 struct module {
-  void *handle; // handle to the DLL
+  void *handle; // handle to the DLL (always null on 3DS)
 };
 //=======================================================================
 #endif
