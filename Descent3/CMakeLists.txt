@@ -319,6 +319,9 @@ if(NINTENDO_3DS)
   # 3DS build: minimal entry point only. Add .cpp files back one by one
   # as their dependencies are stubbed/ported.
   # -------------------------------------------------------------------
+  # Tell cfile where to find game data on the SD card
+  set(DEFAULT_ADDITIONAL_DIRS "sdmc:/descent3" CACHE STRING "3DS game data path" FORCE)
+
   add_executable(Descent3
     ${CMAKE_SOURCE_DIR}/3ds/ctr_main.cpp
     ${CMAKE_SOURCE_DIR}/3ds/ctr_init.cpp  # Minimal PreInitD3Systems shim

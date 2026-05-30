@@ -160,9 +160,15 @@ std::vector<std::filesystem::path> cf_LocatePathMultiplePathsHelper(const std::f
   for (auto base_directories_iterator = Base_directories.rbegin();
        base_directories_iterator != Base_directories.rend();
        ++base_directories_iterator) {
+    // On 3DS, devoptab paths like "sdmc:/..." are absolute but don't start with '/'
+    // so is_absolute() returns false. Accept them anyway.
+#if !defined(__3DS__)
     ASSERT(("base_directory should be an absolute path.", base_directories_iterator->is_absolute()));
+#endif
     auto to_append = cf_LocatePathCaseInsensitiveHelper(relative_path, *base_directories_iterator);
+#if !defined(__3DS__)
     ASSERT(("to_append should be either empty or an absolute path.", to_append.empty() || to_append.is_absolute()));
+#endif
     if (std::filesystem::exists(to_append)) {
       return_value.push_back(to_append);
       if (stop_after_first_result) {

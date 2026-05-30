@@ -7,6 +7,7 @@
 #include "ctr_platform.h"
 #include "args.h"
 #include "init.h"
+#include "cfile.h"
 
 int main(int argc, char *argv[])
 {
@@ -23,6 +24,25 @@ int main(int argc, char *argv[])
     printf("Calling PreInitD3Systems()...\n");
     PreInitD3Systems();
     printf("PreInitD3Systems() returned!\n");
+
+    // Mount the SD card filesystem
+    printf("Mounting sdmc...\n");
+    fsInit();
+    archiveMountSdmc();
+
+    // Init cfile base directories (sdmc:/descent3 set via CMake DEFAULT_ADDITIONAL_DIRS)
+    printf("Init cfile base dirs...\n");
+    cf_AddDefaultBaseDirectories();
+    cf_AddBaseDirectory("sdmc:/descent3");
+
+    // Try opening the main HOG file
+    printf("Opening d3.hog...\n");
+    int hog = cf_OpenLibrary("d3.hog");
+    if (hog) {
+        printf("d3.hog opened! handle=%d\n", hog);
+    } else {
+        printf("Failed to open d3.hog - check sdmc:/descent3/\n");
+    }
 
     printf("\nPress START to exit.\n");
 
