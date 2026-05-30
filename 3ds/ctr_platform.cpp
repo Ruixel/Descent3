@@ -14,14 +14,14 @@ void ctr_platform_init(void)
     // Initialise the libctru console on the bottom screen.
     consoleInit(GFX_BOTTOM, &g_console);
 
-    // Initialise citro3d (needed even before real rendering; harmless stub-only).
-    C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
-
     printf("Descent3 3DS stub started\n");
+
+    // Initialise citro3d — deferred until rendering is actually needed
+    // C3D_Init(C3D_DEFAULT_CMDBUF_SIZE);
 }
 
 void ctr_platform_fini(void)
 {
-    C3D_Fini();
+    // C3D_Fini();
     gfxExit();
 }

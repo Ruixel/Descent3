@@ -47,7 +47,7 @@ set(ARCH_FLAGS "-march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft -mword-re
 set(COMMON_FLAGS "${ARCH_FLAGS} -fomit-frame-pointer -ffunction-sections -DARM11 -D__3DS__")
 
 set(CMAKE_C_FLAGS_INIT   "${COMMON_FLAGS}" CACHE STRING "")
-set(CMAKE_CXX_FLAGS_INIT "${COMMON_FLAGS} -fno-rtti" CACHE STRING "")
+set(CMAKE_CXX_FLAGS_INIT "${COMMON_FLAGS} -fno-rtti -fno-exceptions" CACHE STRING "")
 set(CMAKE_ASM_FLAGS_INIT "${ARCH_FLAGS}" CACHE STRING "")
 
 # 3DSX executable specs

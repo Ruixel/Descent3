@@ -319,9 +319,16 @@ if(NINTENDO_3DS)
   # 3DS build: minimal entry point only. Add .cpp files back one by one
   # as their dependencies are stubbed/ported.
   # -------------------------------------------------------------------
-  add_executable(Descent3 ${CMAKE_SOURCE_DIR}/3ds/ctr_main.cpp)
+  add_executable(Descent3
+    ${CMAKE_SOURCE_DIR}/3ds/ctr_main.cpp
+    ${CMAKE_SOURCE_DIR}/3ds/ctr_init.cpp  # Minimal PreInitD3Systems shim
+    # Game source files — added back progressively as deps are resolved
+    args.cpp
+    program.cpp
+  )
   target_include_directories(Descent3 PRIVATE
     ${CMAKE_SOURCE_DIR}/3ds
+    ${CMAKE_SOURCE_DIR}/Descent3
     ${PROJECT_BINARY_DIR}/lib
     ${CTRULIB}/include
   )

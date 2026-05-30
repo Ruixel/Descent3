@@ -17,6 +17,7 @@
 */
 
 #include <cstring>
+#include <strings.h>  // strcasecmp on newlib/3DS
 
 #include "args.h"
 #include "log.h"

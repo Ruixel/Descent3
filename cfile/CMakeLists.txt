@@ -35,6 +35,12 @@ target_include_directories(cfile PUBLIC
   PRIVATE ${CMAKE_CURRENT_BINARY_DIR}   # For default_base_directories.h
 )
 
+if(NINTENDO_3DS)
+  # cfile uses C++ exceptions (throw/catch in ThrowCFileError).
+  # Re-enable them just for this library even though the rest of the build uses -fno-exceptions.
+  target_compile_options(cfile PRIVATE -fexceptions)
+endif()
+
 if(BUILD_TESTING)
   add_subdirectory(tests)
 endif()

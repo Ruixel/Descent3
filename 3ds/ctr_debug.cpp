@@ -3,6 +3,12 @@
 #include <stdio.h>
 #include <cstdarg>
 
+// C++ function (must NOT be in extern "C")
+int Debug_MessageBox(int type, const char *title, const char *str) {
+  printf("[DBG] %s: %s\n", title ? title : "?", str ? str : "?");
+  return 0;
+}
+
 extern "C" {
 
 void debug_break(void) { /* no-op on 3DS */ }

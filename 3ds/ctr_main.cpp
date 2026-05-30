@@ -1,12 +1,12 @@
 // 3DS entry point for Descent 3
 // Replaces sdlmain.cpp on the 3DS target.
-// Start minimal: boot the platform, show the console, then exit cleanly.
-// Wire in PreInitD3Systems() / Descent3() progressively as stubs are filled.
 
 #include <3ds.h>
 #include <stdio.h>
 
 #include "ctr_platform.h"
+#include "args.h"
+#include "init.h"
 
 int main(int argc, char *argv[])
 {
@@ -14,6 +14,16 @@ int main(int argc, char *argv[])
 
     printf("Descent3 3DS\n");
     printf("Build: " __DATE__ " " __TIME__ "\n");
+
+    // Fake argv so GatherArgs has something to work with
+    char arg0[] = "Descent3";
+    char *fakeArgs[] = { arg0 };
+    GatherArgs(fakeArgs);
+
+    printf("Calling PreInitD3Systems()...\n");
+    PreInitD3Systems();
+    printf("PreInitD3Systems() returned!\n");
+
     printf("\nPress START to exit.\n");
 
     // Main loop — keep the applet alive until the user quits.
