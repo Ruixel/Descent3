@@ -27,12 +27,10 @@ bool ddio_InternalInit(ddio_init_info *) { return true; }
 // ---------------------------------------------------------------------------
 #include "ddio_common.h"  // KEY_UP, KEY_DOWN, KEY_ENTER, KEY_ESC, etc.
 
-// Map a 3DS button mask to a D3 key scancode (single key per frame)
+// Map a 3DS button mask to a D3 key scancode.
+// D-pad is handled via mouse cursor movement (ctr_mouse_update), not keys,
+// so that menu focus works without needing a pre-selected gadget.
 static int ctr_buttons_to_key(u32 down) {
-    if (down & KEY_DUP)    return KEY_UP;
-    if (down & KEY_DDOWN)  return KEY_DOWN;
-    if (down & KEY_DLEFT)  return KEY_LEFT;
-    if (down & KEY_DRIGHT) return KEY_RIGHT;
     if (down & KEY_A)      return KEY_ENTER;
     if (down & KEY_B)      return KEY_ESC;
     if (down & KEY_X)      return KEY_SPACEBAR;
@@ -80,24 +78,42 @@ void ddio_InternalResetKey(uint8_t) {}
 // UI coords are in D3's 640x480 logical space.
 // ---------------------------------------------------------------------------
 
-static int  s_mouse_x = 320, s_mouse_y = 240;  // start centre
-static int  s_mouse_lx = 320, s_mouse_ly = 240;
+// Mouse coords stored in D3 logical space (0..639, 0..479).
+// UISystem divides raw mouse coords by kDefaultMouseScale=20, so we multiply
+// by 20 when returning from ddio_MouseGetState.
+static const int MOUSE_SCALE = 20;
+
+// Start the cursor at the first main-menu item position (MMITEM_X=384, MMITEM_Y=175)
+// so the player can immediately click without having to move the cursor first.
+static int  s_mouse_x  = 384, s_mouse_y  = 175;
+static int  s_mouse_lx = 384, s_mouse_ly = 175;
 static bool s_btn1_down = false;
 static bool s_btn1_event = false;
 static bool s_btn1_event_state = false;
+
+// D-pad cursor step (matches mmItem spacing in mmItem.h: items 20px apart)
+static const int DPAD_STEP = 20;
 
 // Call once per frame to update mouse state from HID
 static void ctr_mouse_update() {
     hidScanInput();
 
-    // Circle pad: range ~-154..+154 per axis. Scale to ~10px/frame movement.
+    // Circle pad: smooth analog cursor movement
     circlePosition cp;
     hidCircleRead(&cp);
     const float DEAD = 20.0f, SCALE = 0.06f;
     if (cp.dx > DEAD || cp.dx < -DEAD)
         s_mouse_x += (int)(cp.dx * SCALE);
     if (cp.dy > DEAD || cp.dy < -DEAD)
-        s_mouse_y -= (int)(cp.dy * SCALE);  // Y is inverted
+        s_mouse_y -= (int)(cp.dy * SCALE);  // Y inverted
+
+    // D-pad: snap cursor by one menu-item step per press.
+    // This is the primary navigation method for menus.
+    u32 down = hidKeysDown();
+    if (down & KEY_DUP)    s_mouse_y -= DPAD_STEP;
+    if (down & KEY_DDOWN)  s_mouse_y += DPAD_STEP;
+    if (down & KEY_DLEFT)  s_mouse_x -= DPAD_STEP;
+    if (down & KEY_DRIGHT) s_mouse_x += DPAD_STEP;
 
     // Clamp to 640x480 logical space
     if (s_mouse_x < 0)   s_mouse_x = 0;
@@ -105,18 +121,18 @@ static void ctr_mouse_update() {
     if (s_mouse_y < 0)   s_mouse_y = 0;
     if (s_mouse_y > 479) s_mouse_y = 479;
 
-    // Touch screen → mouse click (map 320x240 touch to 640x480)
+    // Touch screen → absolute cursor position (320x240 touch → 640x480)
     bool prev_down = s_btn1_down;
     if (hidKeysHeld() & KEY_TOUCH) {
         touchPosition tp;
         hidTouchRead(&tp);
-        s_mouse_x  = tp.px * 2;
-        s_mouse_y  = tp.py * 2;
+        s_mouse_x   = tp.px * 2;
+        s_mouse_y   = tp.py * 2;
         s_btn1_down = true;
     } else {
         s_btn1_down = false;
     }
-    // A button also acts as left click
+    // A button acts as left click at current cursor position
     if (hidKeysHeld() & KEY_A) s_btn1_down = true;
 
     if (s_btn1_down != prev_down) {
@@ -125,9 +141,9 @@ static void ctr_mouse_update() {
     }
 }
 
-bool ddio_MouseInit() { s_mouse_x = 320; s_mouse_y = 240; return true; }
+bool ddio_MouseInit() { s_mouse_x = 384; s_mouse_y = 175; return true; }
 void ddio_MouseClose() {}
-void ddio_MouseReset() { s_mouse_x = 320; s_mouse_y = 240; s_btn1_down = false; }
+void ddio_MouseReset() { s_mouse_x = 384; s_mouse_y = 175; s_btn1_down = false; }
 void ddio_MouseMode(int) {}
 void ddio_MouseQueueFlush() { s_btn1_event = false; }
 void ddio_InternalMouseFrame() { ctr_mouse_update(); }
@@ -142,12 +158,15 @@ int  ddio_MouseGetCaps(int *btn, int *axis) {
 }
 int  ddio_MouseGetState(int *x, int *y, int *dx, int *dy, int *z, int *dz) {
     ctr_mouse_update();
-    if (x)  *x  = s_mouse_x;  if (y)  *y  = s_mouse_y;
-    if (dx) *dx = s_mouse_x - s_mouse_lx;
-    if (dy) *dy = s_mouse_y - s_mouse_ly;
-    if (z)  *z  = 0;           if (dz) *dz = 0;
-    s_mouse_lx = s_mouse_x;   s_mouse_ly = s_mouse_y;
-    return s_btn1_down ? 1 : 0;  // bit0 = LMB
+    // Scale logical coords by MOUSE_SCALE — UISystem divides by kDefaultMouseScale=20
+    // to recover the logical position, so we must pre-multiply here.
+    if (x)  *x  = s_mouse_x  * MOUSE_SCALE;
+    if (y)  *y  = s_mouse_y  * MOUSE_SCALE;
+    if (dx) *dx = (s_mouse_x - s_mouse_lx) * MOUSE_SCALE;
+    if (dy) *dy = (s_mouse_y - s_mouse_ly) * MOUSE_SCALE;
+    if (z)  *z  = 0;  if (dz) *dz = 0;
+    s_mouse_lx = s_mouse_x;  s_mouse_ly = s_mouse_y;
+    return s_btn1_down ? 1 : 0;
 }
 bool ddio_MouseGetEvent(int *btn, bool *state) {
     if (!s_btn1_event) return false;

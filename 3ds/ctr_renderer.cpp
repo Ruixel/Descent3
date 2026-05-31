@@ -475,10 +475,12 @@ void rend_DrawChunkedBitmap(chunked_bitmap *chunk, int x, int y, uint8_t alpha) 
     // individually sized, so we read the actual dims from GameBitmaps).
 
     int tile_idx = 0;
-    float cur_y = (float)y * sy;
+    // x,y are in D3 logical space, local to the current viewport.
+    // Add the viewport origin before scaling to screen pixels.
+    float cur_y = (s_vp_y + y) * sy;
 
     for (int row = 0; row < chunk->h; row++) {
-        float cur_x = (float)x * sx;
+        float cur_x = (s_vp_x + x) * sx;
         float row_h = 0;
 
         for (int col = 0; col < chunk->w; col++) {
