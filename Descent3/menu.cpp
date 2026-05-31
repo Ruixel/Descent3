@@ -1124,18 +1124,19 @@ bool MenuNewGame() {
 #else
   if ((!FindArg("-mission")) && (!FirstGame) && (-1 == Current_pilot.find_mission_data(TRAINING_MISSION_NAME))) {
 
-    FirstGame = true;
+    //FirstGame = true;
 
-    if (LoadMission("training.mn3")) {
-      CurrentPilotUpdateMissionStatus(true);
-      // go into game mode.
-      SetGameMode(GM_NORMAL);
-      SetFunctionMode(GAME_MODE);
-      return true;
-    } else {
-      DoMessageBox(TXT_ERROR, TXT_ERRLOADMSN, MSGBOX_OK);
-      return false;
-    }
+    // TODO: I forgot to copy training.mn3 across
+    // if (LoadMission("training.mn3")) {
+    //   CurrentPilotUpdateMissionStatus(true);
+    //   // go into game mode.
+    //   SetGameMode(GM_NORMAL);
+    //   SetFunctionMode(GAME_MODE);
+    //   return true;
+    // } else {
+    //   DoMessageBox(TXT_ERROR, TXT_ERRLOADMSN, MSGBOX_OK);
+    //   return false;
+    // }
   } else if (FirstGame) {
     FirstGame = false;
 #ifdef OEM

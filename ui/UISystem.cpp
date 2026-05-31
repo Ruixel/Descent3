@@ -509,8 +509,8 @@ int ui_DoFrame(bool input) {
     if (waitTimeMS < 0) {
       waitTimeMS = 0;
     }
-    printf("elapsedTimeS: %f, waitTimeMS: %d\n", elapsedTimeS, waitTimeMS);
-    printf("timer_GetTime(): %f, UI_input.cur_time: %f\n", timer_GetTime(), UI_input.cur_time);
+    // printf("elapsedTimeS: %f, waitTimeMS: %d\n", elapsedTimeS, waitTimeMS);
+    // printf("timer_GetTime(): %f, UI_input.cur_time: %f\n", timer_GetTime(), UI_input.cur_time);
     D3::ChronoTimer::SleepMS(waitTimeMS);
 
     float temp_time = timer_GetTime();

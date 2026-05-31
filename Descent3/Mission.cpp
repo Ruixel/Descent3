@@ -926,6 +926,7 @@ bool LoadMission(const char *mssn) {
 #endif
 #else
 
+  printf("[3DS] Loading mission: %s\n", mssn);
   tMission *msn;
   CFILE *fp = nullptr; // Mission file
   char errtext[80];    // Stores error if unable to read mission

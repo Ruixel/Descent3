@@ -273,10 +273,14 @@ tGameState Game_state = GAMESTATE_IDLE;
 // PlayGame / Credits_Display / FreeMultiDLL
 // (game.cpp / credits.cpp / multidll.cpp — not compiled on 3DS)
 // -----------------------------------------------------------------------
-void PlayGame()           {}
-void Credits_Display()    {}
-void FreeMultiDLL()       {}
-void QuickPlayGame()      {}
+// PlayGame / QuickPlayGame — not yet implemented on 3DS.
+// Must call SetFunctionMode(MENU_MODE) before returning, otherwise the
+// MainLoop switch keeps re-entering GAME_MODE / LOADDEMO_MODE forever.
+#include "descent.h"
+void PlayGame()        { SetFunctionMode(MENU_MODE); }
+void QuickPlayGame()   { SetFunctionMode(MENU_MODE); }
+void Credits_Display() { /* MainLoop sets Function_mode = MENU_MODE after this */ }
+void FreeMultiDLL()    {}
 
 // -----------------------------------------------------------------------
 // Players array (referenced by menu.cpp)

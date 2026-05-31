@@ -276,8 +276,17 @@ std::vector<std::filesystem::path> ddio_GetSysRoots() {
     return { std::filesystem::path("sdmc:/") };
 }
 
-void ddio_DoForeachFile(const std::filesystem::path &, const std::regex &,
-                        const std::function<void(std::filesystem::path)> &) {}
+void ddio_DoForeachFile(const std::filesystem::path &dir, const std::regex &filter,
+                        const std::function<void(std::filesystem::path)> &fn) {
+    std::error_code ec;
+    if (!std::filesystem::is_directory(dir, ec)) return;
+    for (auto &entry : std::filesystem::directory_iterator(dir, ec)) {
+        if (!entry.is_regular_file(ec)) continue;
+        std::string name = entry.path().filename().string();
+        if (std::regex_match(name, filter))
+            fn(entry.path());
+    }
+}
 
 std::filesystem::path ddio_GetTmpFileName(const std::filesystem::path &basedir, const char *prefix) {
     static int counter = 0;
