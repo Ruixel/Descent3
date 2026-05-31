@@ -120,37 +120,7 @@ void SetScreenMode(int sm, bool /*force*/) {
     s_screen_mode = sm;
 }
 
-// -----------------------------------------------------------------------
-// descent.cpp — function mode + MainLoop
-// -----------------------------------------------------------------------
-#include "descent.h"
-#include "menu.h"
-
-static function_mode s_function_mode = MENU_MODE;
-function_mode GetFunctionMode() { return s_function_mode; }
-void SetFunctionMode(function_mode mode) {
-    printf("[3DS] SetFunctionMode(%d)\n", (int)mode);
-    s_function_mode = mode;
-}
-
-void MainLoop() {
-    bool exit_game = false;
-    while (!exit_game && aptMainLoop()) {
-        switch (s_function_mode) {
-        case QUIT_MODE:
-            exit_game = true;
-            break;
-        case MENU_MODE:
-            if (MainMenu())
-                exit_game = true;
-            break;
-        default:
-            printf("[3DS] MainLoop: unhandled mode %d, returning to menu\n", (int)s_function_mode);
-            s_function_mode = MENU_MODE;
-            break;
-        }
-    }
-}
+// MainLoop, SetFunctionMode, GetFunctionMode are provided by descent.cpp
 
 // -----------------------------------------------------------------------
 // Multiplayer UI bail flag
@@ -190,13 +160,40 @@ hlsSystem Sound_system;
 // -----------------------------------------------------------------------
 #include "pilot_class.h"
 #include "Inventory.h"
-pilot::pilot()  { memset(this, 0, sizeof(*this)); }
+pilot::pilot() {
+  // Zero all POD/pointer members individually — can't use memset(this,...) because
+  // std::string filename would have its SSO buffer corrupted.
+  name          = nullptr;
+  ship_logo     = nullptr;
+  ship_model    = nullptr;
+  audio1_file   = nullptr;
+  audio2_file   = nullptr;
+  audio3_file   = nullptr;
+  audio4_file   = nullptr;
+  guidebot_name = nullptr;
+  picture_id    = 0;
+  difficulty    = 0;
+  hud_mode      = 0;
+  profanity_filter_on = false;
+  audiotaunts   = false;
+  hud_stat      = 0;
+  hud_graphical_stat = 0;
+  game_window_w = 0;
+  game_window_h = 0;
+  num_missions_flown = 0;
+  mission_data  = nullptr;
+  memset(PrimarySelectList,   0, sizeof(PrimarySelectList));
+  memset(SecondarySelectList, 0, sizeof(SecondarySelectList));
+  memset(&gameplay_toggles,   0, sizeof(gameplay_toggles));
+  // filename is default-constructed as empty std::string — leave it alone.
+}
 pilot::~pilot() {}
 void pilot::set_filename(const std::string &f) { filename = f; }
 std::string pilot::get_filename() { return filename; }
 
 Inventory::Inventory()  {}
 Inventory::~Inventory() {}
+void Inventory::Reset(bool, int) {}
 int pilot::find_mission_data(const char *) { return -1; }
 
 // -----------------------------------------------------------------------
@@ -239,7 +236,7 @@ bool  IsCheater = false;
 void  LoadGameDialog() {}
 bool  DoPathFileDialog(bool, std::filesystem::path &, const char *,
                        const std::vector<std::string> &, int) { return false; }
-void  SimpleStartLevel(const std::filesystem::path &) {}
+bool  SimpleStartLevel(const std::filesystem::path &) { return false; }
 
 // -----------------------------------------------------------------------
 // Options menu stub
@@ -265,6 +262,21 @@ void        EndMovie(tCinematic *) {}
 #include "Mission.h"
 bool  LoadLevelInfo(const std::filesystem::path &, level_info &) { return false; }
 // DisplayLevelWarpDlg, MenuLoadLevel, MenuNewGame defined in menu.cpp
+
+// -----------------------------------------------------------------------
+// Game state (gamesequence.cpp not compiled on 3DS)
+// -----------------------------------------------------------------------
+#include "gamesequence.h"
+tGameState Game_state = GAMESTATE_IDLE;
+
+// -----------------------------------------------------------------------
+// PlayGame / Credits_Display / FreeMultiDLL
+// (game.cpp / credits.cpp / multidll.cpp — not compiled on 3DS)
+// -----------------------------------------------------------------------
+void PlayGame()           {}
+void Credits_Display()    {}
+void FreeMultiDLL()       {}
+void QuickPlayGame()      {}
 
 // -----------------------------------------------------------------------
 // Players array (referenced by menu.cpp)

@@ -366,6 +366,7 @@ int mmInterface::DoUI() {
     DoUIFrame();
     rend_Flip();
   }
+  printf("Ending main menu with result: %d\n", UI_frame_result);
 
   ui_HideCursor();
   ui_Flush();

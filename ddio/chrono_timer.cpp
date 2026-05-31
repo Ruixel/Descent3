@@ -46,6 +46,7 @@ int64_t ChronoTimer::GetTimeUS() {
 
 void ChronoTimer::SleepMS(int delay) {
 #if defined(__3DS__)
+  if (delay <= 0) return;  // negative delay (frame overrun) — skip sleep
   svcSleepThread((int64_t)delay * 1000000LL);  // nanoseconds
 #else
   std::this_thread::sleep_for(std::chrono::milliseconds(delay));

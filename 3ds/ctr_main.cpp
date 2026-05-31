@@ -76,6 +76,10 @@ int main(int argc, char *argv[])
     InitD3Systems2(false);
     printf("InitD3Systems2() done!\n");
 
+    // init.cpp normally calls SetFunctionMode(MENU_MODE) just before MainLoop().
+    // Since we don't compile init.cpp, do it here.
+    SetFunctionMode(MENU_MODE);
+
     printf("\nEntering MainLoop...\n");
     MainLoop();
 

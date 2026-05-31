@@ -41,6 +41,8 @@
 #include "ctr_app.h"
 #include "ctr_database.h"
 #include "renderer.h"
+#include "newui.h"
+#include "ui.h"
 // Forward declarations from game.cpp (not compiled on 3DS)
 extern void StartFrame(bool clear = true);
 extern void EndFrame();
@@ -48,20 +50,12 @@ extern void EndFrame();
 bool CTR_Graphics_init = false;
 
 // ---------------------------------------------------------------------------
-// Globals that normally live in descent.cpp
+// App/database instances — pointers live in descent.cpp, we fill them here.
 // ---------------------------------------------------------------------------
 static oeLnxApplication g_ctr_app;
-oeApplication *Descent = &g_ctr_app;
-
 static oeCtrAppDatabase g_ctr_database;
-oeAppDatabase *Database = &g_ctr_database;
 
-grScreen *Game_screen = nullptr;
-
-bool Descent_overrided_intro = false;
 std::filesystem::path orig_pwd = "sdmc:/descent3";
-std::filesystem::path Descent3_temp_directory = "sdmc:/descent3/tmp";
-bool Katmai = false;
 
 // ---------------------------------------------------------------------------
 // Globals from manage.cpp (LocalD3Dir, NetD3Dir)
@@ -86,13 +80,15 @@ int  ServerTimeout = 0;
 float LastPacketReceived = 0.0f;
 
 // From game.cpp — screen/window dimensions
-// Top screen is 400x240; we present D3's 640x480 logical space scaled to that.
+// D3 UI and game logic runs in 640x480 logical space.
+// The 3DS top screen (400x240) is a scaled-down render target; the renderer
+// applies sx=400/640, sy=240/480 to all drawing calls.
 int Game_window_x = 0;
 int Game_window_y = 0;
-int Game_window_w = 400;
-int Game_window_h = 240;
-int Max_window_w  = 400;
-int Max_window_h  = 240;
+int Game_window_w = 640;
+int Game_window_h = 480;
+int Max_window_w  = 640;
+int Max_window_h  = 480;
 
 // ---------------------------------------------------------------------------
 // Stubs for subsystems not yet ported
@@ -133,6 +129,10 @@ void gspy_Init() {}
 // ---------------------------------------------------------------------------
 void PreInitD3Systems() {
   printf("[3DS] PreInitD3Systems() start\n");
+
+  // Wire up the app/database pointers that descent.cpp owns (initialized NULL)
+  Descent = &g_ctr_app;
+  Database = &g_ctr_database;
 
   bool debugging = false;
 #ifndef RELEASE
@@ -295,18 +295,21 @@ void InitD3Systems2(bool /*editor*/) {
   LoadAllFonts();
   printf("[3DS] Fonts loaded\n");
 
-  // Quick text render test
-  grtext_Reset();
-  if (CTR_Graphics_init) {
-    StartFrame(true);
-    rend_ClearScreen(GR_BLACK);
-    grtext_SetFont(SMALL_FONT);
-    grtext_SetColor(GR_WHITE);
-    grtext_Printf(10, 10, "Descent 3 - 3DS");
-    grtext_Printf(10, 30, "Font rendering OK!");
-    EndFrame();
-    rend_Flip();
+  // Initialise the UI system (sets UI_screen_width/height, loads cursor, etc.)
+  // Must happen after fonts are loaded (SMALL_FONT must be valid).
+  printf("[3DS] ui_Init...\n");
+  {
+    tUIInitInfo uiinit;
+    uiinit.window_font = SMALL_FONT;
+    uiinit.w = 640;
+    uiinit.h = 480;
+    ui_Init(Descent, &uiinit);
   }
+  ui_UseCursor("StdCursor.ogf");
+  ui_Flush();
 
-  printf("[3DS] InitD3Systems2() complete (table loading deferred)\n");
+  printf("[3DS] NewUIInit...\n");
+  NewUIInit();
+
+  printf("[3DS] InitD3Systems2() complete\n");
 }

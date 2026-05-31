@@ -69,6 +69,13 @@ set(CPPS
   ${CMAKE_SOURCE_DIR}/Descent3/newui_core.cpp
   ${CMAKE_SOURCE_DIR}/Descent3/mmItem.cpp
   ${CMAKE_SOURCE_DIR}/Descent3/menu.cpp
+  # Main loop / function mode
+  ${CMAKE_SOURCE_DIR}/Descent3/descent.cpp
+)
+
+# descent.cpp uses try/catch — enable exceptions for that file only
+set_source_files_properties(${CMAKE_SOURCE_DIR}/Descent3/descent.cpp
+    PROPERTIES COMPILE_FLAGS "-fexceptions"
 )
 
 add_library(platform3ds STATIC ${HEADERS} ${CPPS})

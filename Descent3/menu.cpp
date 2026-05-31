@@ -779,6 +779,7 @@ int MainMenu() {
   exit_menu = ProcessCommandLine();
   // Main Menu Code Here
   while (!exit_menu) {
+    printf("Main Menu Loop\n");
     int res;
     // handle all UI results.
     if ((Demo_looping) || (Demo_restart)) {
@@ -802,7 +803,9 @@ int MainMenu() {
     res = FirstGame ? IDV_NEWGAME : -1;
     if (res == -1) {
       main_menu.SetMusicRegion(MM_MUSIC_REGION);
+      printf("Calling DoUI\n");
       res = main_menu.DoUI();
+      printf("Done with DoUI, result = %d\n", res);
     }
     switch (res) {
     case IDV_NEWGAME:

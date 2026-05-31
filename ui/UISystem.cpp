@@ -505,7 +505,12 @@ int ui_DoFrame(bool input) {
     res = ui_ProcessFocusedWindow(); //	process focused window
 
     const float elapsedTimeS = timer_GetTime() - UI_input.cur_time;
-    const int waitTimeMS = ui_FrameTimeMS - static_cast<int>(elapsedTimeS * 1000.0f);
+    int waitTimeMS = ui_FrameTimeMS - static_cast<int>(elapsedTimeS * 1000.0f);
+    if (waitTimeMS < 0) {
+      waitTimeMS = 0;
+    }
+    printf("elapsedTimeS: %f, waitTimeMS: %d\n", elapsedTimeS, waitTimeMS);
+    printf("timer_GetTime(): %f, UI_input.cur_time: %f\n", timer_GetTime(), UI_input.cur_time);
     D3::ChronoTimer::SleepMS(waitTimeMS);
 
     float temp_time = timer_GetTime();

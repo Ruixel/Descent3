@@ -53,14 +53,19 @@ struct Vert2D {
 
 // Small immediate-mode VBO — 6 verts per quad (2 tris), max 64 quads per flush
 static const int MAX_QUADS = 64;
-static Vert2D s_vbo_data[MAX_QUADS * 6];
-static int    s_vbo_count = 0;
+static Vert2D   s_vbo_data[MAX_QUADS * 6];
+static int      s_vbo_count = 0;
+static C3D_Tex *s_vbo_tex = nullptr;  // texture the pending quads use
 
 // TEV set up once for "texture colour * vertex colour"
 bool s_tev_ready = false;
 
 // Cached clear colour (set by rend_ClearScreen, applied in StartFrame)
 u32  s_clear_color = 0x000000FF;  // RGBA8
+
+// Current viewport origin (in D3's 640x480 logical coordinate space).
+// rend_StartFrame stores the top-left corner; all draw functions offset by this.
+int s_vp_x = 0, s_vp_y = 0;
 
 // Texture cache entry
 struct TexEntry {
@@ -151,16 +156,14 @@ static inline uint32_t argb4444_to_rgba8(uint16_t p) {
 static bool upload_bitmap(int handle, C3D_Tex *tex) {
     if (handle < 0 || handle >= MAX_BITMAPS) return false;
     bms_bitmap *bm = &GameBitmaps[handle];
-    if (!bm->used) { printf("[CTR] upload_bitmap %d: not used\n", handle); return false; }
-    if (!bm->data16) { printf("[CTR] upload_bitmap %d: data16 is null\n", handle); return false; }
+    if (!bm->used || !bm->data16) return false;
 
     int w = bm->width, h = bm->height;
     uint32_t tw = next_pot(w), th = next_pot(h);
-    printf("[CTR] upload_bitmap %d: %dx%d -> POT %dx%d\n", handle, w, h, tw, th);
 
     // Convert ARGB1555 → RGBA8 linear
     uint32_t *linear = (uint32_t *)linearAlloc(tw * th * 4);
-    if (!linear) { printf("[CTR] upload_bitmap: linearAlloc failed (%dx%d)\n", tw, th); return false; }
+    if (!linear) return false;
     memset(linear, 0, tw * th * 4);
 
     uint16_t *src = bm->data16;
@@ -215,33 +218,36 @@ static C3D_Tex *get_tex(int handle) {
     return nullptr;
 }
 
-// Flush queued quads for a given texture.
-static void flush_quads(C3D_Tex *tex) {
-    if (s_vbo_count == 0) return;
+// Flush queued quads using the currently tracked batch texture.
+static void flush_quads(C3D_Tex * /*tex_hint*/ = nullptr) {
+    if (s_vbo_count == 0 || !s_vbo_tex) { s_vbo_count = 0; return; }
 
-    C3D_TexBind(0, tex);
+    C3D_TexBind(0, s_vbo_tex);
 
-    // Upload vertex data via immediate mode
     C3D_ImmDrawBegin(GPU_TRIANGLES);
     for (int i = 0; i < s_vbo_count; i++) {
         Vert2D &v = s_vbo_data[i];
-        C3D_ImmSendAttrib(v.x, v.y, 0.5f, 1.0f);  // position
-        C3D_ImmSendAttrib(v.u, v.v, 0.0f, 0.0f);   // texcoord
-        C3D_ImmSendAttrib(v.r, v.g, v.b, v.a);      // colour
+        C3D_ImmSendAttrib(v.x, v.y, 0.5f, 1.0f);
+        C3D_ImmSendAttrib(v.u, v.v, 0.0f, 0.0f);
+        C3D_ImmSendAttrib(v.r, v.g, v.b, v.a);
     }
     C3D_ImmDrawEnd();
 
     s_vbo_count = 0;
+    s_vbo_tex   = nullptr;
 }
 
 // Push a textured quad (two triangles). Coords in screen pixels (0..CTR_TOP_W, 0..CTR_TOP_H).
-// Flushes if the buffer is full.
+// If the incoming texture differs from the current batch, flush first.
 static void push_quad(C3D_Tex *tex,
-                      float sx, float sy, float sw, float sh,  // screen pixel rect
-                      float u0, float v0, float u1, float v1,  // UV rect
+                      float sx, float sy, float sw, float sh,
+                      float u0, float v0, float u1, float v1,
                       float r, float g, float b, float a) {
-    if (s_vbo_count + 6 > MAX_QUADS * 6)
-        flush_quads(tex);
+    if (!tex) return;
+    // Flush if texture changes or buffer is full
+    if ((s_vbo_tex && s_vbo_tex != tex) || s_vbo_count + 6 > MAX_QUADS * 6)
+        flush_quads();
+    s_vbo_tex = tex;
 
     // Feed pixel coordinates directly — the projection matrix handles the rest
     float x0 = sx,      y0 = sy;
@@ -361,6 +367,12 @@ int rend_Init(renderer_type /*type*/, oeApplication * /*app*/,
                    GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA);
     printf("[CTR] rend_Init: AlphaBlend set\n");
 
+    // Open the very first citro3d frame.  From here on, the frame stays open
+    // until rend_Flip() closes it and immediately opens the next one.
+    C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
+    C3D_RenderTargetClear(s_top, C3D_CLEAR_ALL, s_clear_color, 0);
+    C3D_FrameDrawOn(s_top);
+
     printf("[CTR] rend_Init: OK\n");
     return 1;
 }
@@ -380,27 +392,52 @@ void rend_Close() {
     C3D_Fini();
 }
 
-void rend_StartFrame(int /*x1*/, int /*y1*/, int /*x2*/, int /*y2*/,
-                     int /*clear_flags*/) {
-    C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-    C3D_RenderTargetClear(s_top, C3D_CLEAR_ALL, s_clear_color, 0);
-    C3D_FrameDrawOn(s_top);
+// ---------------------------------------------------------------------------
+// Frame management
+//
+// D3 calls rend_StartFrame/EndFrame many times per visual frame — once for
+// each UI window/gadget sub-region.  citro3d requires exactly one
+// C3D_FrameBegin / C3D_FrameEnd pair per displayed frame.
+//
+// Solution: keep the citro3d frame permanently open between rend_Flip calls.
+//   • rend_StartFrame  — stores the viewport origin; optionally clears screen
+//   • rend_EndFrame    — no-op (individual draw calls flush their own quads)
+//   • rend_Flip        — C3D_FrameEnd (swap) + C3D_FrameBegin (next frame)
+// ---------------------------------------------------------------------------
 
-    // Re-bind shader + TEV each frame (citro3d state can drift between frames)
-    C3D_BindProgram(&s_prog);
-    setup_tev();
-    s_tev_ready = true;
+void rend_StartFrame(int x1, int y1, int /*x2*/, int /*y2*/,
+                     int clear_flags) {
+    // Store viewport origin in 640x480 logical coords.
+    // All draw functions add (s_vp_x, s_vp_y) before scaling to screen pixels.
+    s_vp_x = x1;
+    s_vp_y = y1;
+
+    // Clear screen when asked (e.g. StartFrame(true) from game/menu code).
+    if (clear_flags != 0 && s_top) {
+        C3D_RenderTargetClear(s_top, C3D_CLEAR_ALL, s_clear_color, 0);
+    }
 }
 
 void rend_EndFrame() {
-    // Flush any remaining quads (there's no bound texture here — this shouldn't
-    // happen outside DrawChunkedBitmap, but guard anyway)
-    // Actual flush happens inside rend_DrawChunkedBitmap after each tile.
-    C3D_FrameEnd(0);
+    // Individual draw calls already flush their quad batches via flush_quads().
+    // Nothing to do here.
 }
 
 void rend_Flip() {
-    // citro3d handles buffer swap in C3D_FrameEnd; nothing to do here.
+    // Submit the current frame to the display, then immediately open the next.
+    C3D_FrameEnd(0);
+
+    C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
+    C3D_RenderTargetClear(s_top, C3D_CLEAR_ALL, s_clear_color, 0);
+    C3D_FrameDrawOn(s_top);
+    // Rebind shader & TEV state (can drift after frame boundary)
+    C3D_BindProgram(&s_prog);
+    s_tev_ready = false;
+    setup_tev();
+
+    // Reset viewport to full screen for the new frame.
+    s_vp_x = 0;
+    s_vp_y = 0;
 }
 
 void rend_ClearScreen(ddgr_color color) {
@@ -422,7 +459,7 @@ void rend_ClearScreen(ddgr_color color) {
 // space to the 3DS top screen (400x240).
 // ---------------------------------------------------------------------------
 void rend_DrawChunkedBitmap(chunked_bitmap *chunk, int x, int y, uint8_t alpha) {
-    if (!chunk || !s_top) return;
+    if (!chunk || !chunk->bm_array || !s_top) return;
     // printf("[CTR] DrawChunkedBitmap: %dx%d tiles, pw=%d ph=%d, at (%d,%d)\n",
     //        chunk->w, chunk->h, chunk->pw, chunk->ph, x, y);
 
@@ -461,7 +498,7 @@ void rend_DrawChunkedBitmap(chunked_bitmap *chunk, int x, int y, uint8_t alpha) 
                 push_quad(tex, cur_x, cur_y, tw, th,
                           0.0f, 0.0f, u1, v1,
                           1.0f, 1.0f, 1.0f, a);
-                flush_quads(tex);  // flush immediately — one tex per tile
+                flush_quads();  // flush immediately — one tex per tile
             }
 
             cur_x += tw;
@@ -481,21 +518,17 @@ void rend_DrawChunkedBitmap(chunked_bitmap *chunk, int x, int y, uint8_t alpha) 
 // ---------------------------------------------------------------------------
 void rend_DrawFontCharacter(int bm_handle, int x1, int y1, int x2, int y2,
                             float u, float v, float w, float h) {
-    if (!s_top) { printf("[CTR] DrawFontChar: no render target\n"); return; }
+    if (!s_top) return;
     C3D_Tex *tex = get_tex(bm_handle);
-    if (!tex) { printf("[CTR] DrawFontChar: get_tex(%d) failed\n", bm_handle); return; }
-    static int call_count = 0;
-    if (call_count++ < 3)
-        printf("[CTR] DrawFontChar: bm=%d (%d,%d)-(%d,%d) uv=(%.3f,%.3f,%.3f,%.3f)\n",
-               bm_handle, x1,y1,x2,y2, u,v,w,h);
+    if (!tex) return;
 
-    // D3 font coords are already in screen space (no 640->400 scaling needed
-    // here — grtext already works in the target resolution).
+    // x1,y1,x2,y2 are local to the current viewport (0-based, 640x480 logical).
+    // Add the viewport origin then scale to screen pixels.
     float sx = (float)CTR_TOP_W / 640.0f;
     float sy = (float)CTR_TOP_H / 480.0f;
 
-    float dx  = x1 * sx;
-    float dy  = y1 * sy;
+    float dx  = (s_vp_x + x1) * sx;
+    float dy  = (s_vp_y + y1) * sy;
     float dsw = (x2 - x1) * sx;
     float dsh = (y2 - y1) * sy;
 
@@ -503,7 +536,7 @@ void rend_DrawFontCharacter(int bm_handle, int x1, int y1, int x2, int y2,
     float u1 = u + w, v1 = v + h;
 
     push_quad(tex, dx, dy, dsw, dsh, u0, v0, u1, v1, 1.0f, 1.0f, 1.0f, 1.0f);
-    flush_quads(tex);
+    flush_quads();
 }
 
 // ---------------------------------------------------------------------------
@@ -521,13 +554,13 @@ void rend_DrawScaledBitmap(int x1, int y1, int x2, int y2, int bm,
     float sx = (float)CTR_TOP_W / 640.0f;
     float sy = (float)CTR_TOP_H / 480.0f;
 
-    float dx  = x1 * sx;
-    float dy  = y1 * sy;
+    float dx  = (s_vp_x + x1) * sx;
+    float dy  = (s_vp_y + y1) * sy;
     float dsw = (x2 - x1) * sx;
     float dsh = (y2 - y1) * sy;
 
     push_quad(tex, dx, dy, dsw, dsh, u0, v0, u1, v1, 1.0f, 1.0f, 1.0f, 1.0f);
-    flush_quads(tex);
+    flush_quads();
 }
 
 // ---------------------------------------------------------------------------
@@ -602,6 +635,10 @@ void rend_DrawLine(int x1, int y1, int x2, int y2) {
         s_white_init = true;
     }
 
+    // Add viewport offset before scaling
+    float vox = s_vp_x * sx, voy = s_vp_y * sy;
+    fx1 += vox; fy1 += voy; fx2 += vox; fy2 += voy;
+
     // Draw as a thin rectangle along the line direction
     float dx = fx2 - fx1, dy = fy2 - fy1;
     float len = sqrtf(dx*dx + dy*dy);
@@ -619,7 +656,7 @@ void rend_DrawLine(int x1, int y1, int x2, int y2) {
         float ly = (fy1 < fy2 ? fy1 : fy2);
         push_quad(&s_white_tex, lx, ly, thick, fabsf(dy), 0,0,1,1, r,g,b,1.0f);
     }
-    flush_quads(&s_white_tex);
+    flush_quads();
 }
 
 // Fill a solid colour rectangle
@@ -647,12 +684,12 @@ void rend_FillRect(ddgr_color color, int x1, int y1, int x2, int y2) {
         s_white2_init = true;
     }
 
-    float dx = (x1 < x2 ? x1 : x2) * sx;
-    float dy = (y1 < y2 ? y1 : y2) * sy;
+    float dx = (s_vp_x + (x1 < x2 ? x1 : x2)) * sx;
+    float dy = (s_vp_y + (y1 < y2 ? y1 : y2)) * sy;
     float dw = abs(x2 - x1) * sx;
     float dh = abs(y2 - y1) * sy;
     push_quad(&s_white_tex2, dx, dy, dw, dh, 0,0,1,1, r,g,b,1.0f);
-    flush_quads(&s_white_tex2);
+    flush_quads();
 }
 
 // Draw a polygon as a filled quad (UI uses 4-vertex rects)
@@ -666,11 +703,12 @@ void rend_DrawPolygon2D(int /*handle*/, g3Point **p, int nv) {
     float b = ( s_flat_color        & 0xFF) / 255.0f;
     float a = 1.0f;
 
-    // Find bounding rect
-    float qx0 = p[0]->p3_sx * sx, qy0 = p[0]->p3_sy * sy;
+    // Find bounding rect (coords are local to viewport, add vp offset before scaling)
+    float vox = s_vp_x * sx, voy = s_vp_y * sy;
+    float qx0 = vox + p[0]->p3_sx * sx, qy0 = voy + p[0]->p3_sy * sy;
     float qx1 = qx0, qy1 = qy0;
     for (int i = 1; i < nv; i++) {
-        float ppx = p[i]->p3_sx * sx, ppy = p[i]->p3_sy * sy;
+        float ppx = vox + p[i]->p3_sx * sx, ppy = voy + p[i]->p3_sy * sy;
         if (ppx < qx0) qx0 = ppx; if (ppy < qy0) qy0 = ppy;
         if (ppx > qx1) qx1 = ppx; if (ppy > qy1) qy1 = ppy;
     }
@@ -691,7 +729,7 @@ void rend_DrawPolygon2D(int /*handle*/, g3Point **p, int nv) {
     }
 
     push_quad(&s_white_tex3, qx0, qy0, qx1-qx0, qy1-qy0, 0,0,1,1, r,g,b,a);
-    flush_quads(&s_white_tex3);
+    flush_quads();
 }
 
 // Draw a bitmap at exact pixel position (no scaling)
@@ -705,8 +743,8 @@ void rend_DrawSimpleBitmap(int bm_handle, int x, int y) {
     int bh = GameBitmaps[bm_handle].height;
     float u1 = (float)bw / tex->width;
     float v1 = (float)bh / tex->height;
-    push_quad(tex, x*sx, y*sy, bw*sx, bh*sy, 0,0,u1,v1, 1,1,1,1);
-    flush_quads(tex);
+    push_quad(tex, (s_vp_x+x)*sx, (s_vp_y+y)*sy, bw*sx, bh*sy, 0,0,u1,v1, 1,1,1,1);
+    flush_quads();
 }
 
 // 3D drawing — all no-ops until the 3D path is implemented
